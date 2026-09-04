@@ -1,0 +1,57 @@
+{
+  "generated_at_utc": "2026-08-13T16:02:34.881307+00:00",
+  "test": "Test 04 Cold Start / Test 05 Exposure Convergence / Test 06 Environment Separation",
+  "camera": {
+    "name": "USB Camera",
+    "device_id": "\\\\?\\USB#VID_5258&PID_4A55&MI_00#7&2c3eb27f&0&0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\\GLOBAL"
+  },
+  "capture_mode": {
+    "width": 640,
+    "height": 480,
+    "fps": 30,
+    "pixel_format": "NV12"
+  },
+  "environment": "normal-fixed-angle",
+  "camera_sharing": false,
+  "duration_ms": 3000,
+  "repeats": 5,
+  "pause_ms": 1000,
+  "csv_path": "raw-data\\luminance-samples.csv",
+  "sessions": [
+    {
+      "session_id": "2050d4d6-e064-4139-ad0d-8d2df73d5a14",
+      "repeat": 1,
+      "started_at_utc": "2026-08-13T16:02:12.5962135+00:00",
+      "ended_at_utc": "2026-08-13T16:02:16.2612786+00:00",
+      "frame_count": 89
+    },
+    {
+      "session_id": "0cf42bfc-1b78-47a6-a2d7-16c4e5cb4df7",
+      "repeat": 2,
+      "started_at_utc": "2026-08-13T16:02:17.2754978+00:00",
+      "ended_at_utc": "2026-08-13T16:02:20.9212501+00:00",
+      "frame_count": 90
+    },
+    {
+      "session_id": "14ff2140-5afb-41c6-b074-32d6db56ad3b",
+      "repeat": 3,
+      "started_at_utc": "2026-08-13T16:02:21.9344947+00:00",
+      "ended_at_utc": "2026-08-13T16:02:25.5780441+00:00",
+      "frame_count": 89
+    },
+    {
+      "session_id": "ea8e2f52-04d7-41bd-8bc3-440b6c10b01e",
+      "repeat": 4,
+      "started_at_utc": "2026-08-13T16:02:26.5808318+00:00",
+      "ended_at_utc": "2026-08-13T16:02:30.2079643+00:00",
+      "frame_count": 89
+    },
+    {
+      "session_id": "84b4f24c-15a9-43e6-ac84-b393605340a0",
+      "repeat": 5,
+      "started_at_utc": "2026-08-13T16:02:31.2219222+00:00",
+      "ended_at_utc": "2026-08-13T16:02:34.8726366+00:00",
+      "frame_count": 89
+    }
+  ]
+}

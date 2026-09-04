@@ -1,0 +1,35 @@
+{
+  "generated_at_utc": "2026-09-03T15:08:35.1884833+00:00",
+  "test": "Test 04 Cold Start / Test 05 Exposure Convergence / Test 06 Environment Separation",
+  "execution_mode": "lazy",
+  "camera": {
+    "name": "USB Camera",
+    "device_id": "\\\\?\\USB#VID_5258&PID_4A55&MI_00#7&2c3eb27f&0&0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\\GLOBAL"
+  },
+  "capture_mode": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "pixel_format": "NV12"
+  },
+  "environment": "contention-4",
+  "camera_sharing": false,
+  "duration_ms": 3000,
+  "repeats": 1,
+  "pause_ms": 1000,
+  "total_cpu_time_ms": 171.875,
+  "total_wall_time_ms": 3264.5742,
+  "csv_path": "raw-data\\luminance-samples.csv",
+  "sessions": [
+    {
+      "session_id": "18f953a6-af07-4e66-8afe-e818ec2c6540",
+      "repeat": 1,
+      "started_at_utc": "2026-09-03T15:08:31.9175874+00:00",
+      "ended_at_utc": "2026-09-03T15:08:35.17604+00:00",
+      "frame_count": 0,
+      "open_latency_ms": 41.6834,
+      "capture_success": false,
+      "release_success": true
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "generated_at_utc": "2026-08-13T16:50:51.6998514+00:00",
+  "test": "Test 04 Cold Start / Test 05 Exposure Convergence / Test 06 Environment Separation",
+  "execution_mode": "lazy",
+  "camera": {
+    "name": "USB Camera",
+    "device_id": "\\\\?\\USB#VID_5258&PID_4A55&MI_00#7&2c3eb27f&0&0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\\GLOBAL"
+  },
+  "capture_mode": {
+    "width": 640,
+    "height": 480,
+    "fps": 30,
+    "pixel_format": "NV12"
+  },
+  "environment": "coexistence-windows-camera-app",
+  "camera_sharing": false,
+  "duration_ms": 3000,
+  "repeats": 3,
+  "pause_ms": 1000,
+  "total_cpu_time_ms": 343.75,
+  "total_wall_time_ms": 11975.7299,
+  "csv_path": "raw-data\\luminance-samples.csv",
+  "sessions": [
+    {
+      "session_id": "123138e4-6df1-41b4-994c-132150e359f9",
+      "repeat": 1,
+      "started_at_utc": "2026-08-13T16:50:39.7145443+00:00",
+      "ended_at_utc": "2026-08-13T16:50:43.0731794+00:00",
+      "frame_count": 0,
+      "open_latency_ms": 48.9425,
+      "capture_success": false,
+      "release_success": true
+    },
+    {
+      "session_id": "34a8bcb8-895e-465f-a32a-9acaf77847bd",
+      "repeat": 2,
+      "started_at_utc": "2026-08-13T16:50:44.0935997+00:00",
+      "ended_at_utc": "2026-08-13T16:50:47.4342431+00:00",
+      "frame_count": 0,
+      "open_latency_ms": 38.3008,
+      "capture_success": false,
+      "release_success": true
+    },
+    {
+      "session_id": "517ce6d1-0c43-442a-898f-974a7932c213",
+      "repeat": 3,
+      "started_at_utc": "2026-08-13T16:50:48.4437316+00:00",
+      "ended_at_utc": "2026-08-13T16:50:51.6885417+00:00",
+      "frame_count": 0,
+      "open_latency_ms": 29.0445,
+      "capture_success": false,
+      "release_success": true
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "generated_at_utc": "2026-09-03T15:01:10.0847629+00:00",
+  "camera_api": "Windows.Media.Capture (VideoDeviceController)",
+  "cameras": [
+    {
+      "device_name": "USB Camera",
+      "device_id": "\\\\?\\USB#VID_5258&PID_4A55&MI_00#7&2c3eb27f&0&0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\\GLOBAL",
+      "vendor_id": "5258",
+      "product_id": "4A55",
+      "interface": "USB",
+      "camera_api": "Windows.Media.Capture (VideoDeviceController)",
+      "capture_modes": [
+        {
+          "width": 1920,
+          "height": 1080,
+          "fps": 30,
+          "frame_rate_numerator": 30,
+          "frame_rate_denominator": 1,
+          "pixel_format": "NV12",
+          "media_type": "Video"
+        }
+      ],
+      "controls": {
+        "auto_exposure": "No",
+        "exposure": "Yes",
+        "gain": "No",
+        "white_balance": "Yes",
+        "auto_white_balance": "Unknown",
+        "backlight_compensation": "Yes",
+        "low_light_compensation": "Unknown"
+      }
+    }
+  ]
+}

@@ -1,0 +1,241 @@
+{
+  "generated_at_utc": "2026-08-14T03:19:39.5693457+00:00",
+  "camera_api": "Windows.Media.Capture (VideoDeviceController)",
+  "cameras": [
+    {
+      "device_name": "USB Camera",
+      "device_id": "\\\\?\\USB#VID_5258&PID_4A55&MI_00#7&2c3eb27f&0&0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\\GLOBAL",
+      "vendor_id": "5258",
+      "product_id": "4A55",
+      "interface": "USB",
+      "camera_api": "Windows.Media.Capture (VideoDeviceController)",
+      "capture_modes": [
+        {
+          "width": 1280,
+          "height": 720,
+          "fps": 30,
+          "frame_rate_numerator": 30,
+          "frame_rate_denominator": 1,
+          "pixel_format": "NV12",
+          "media_type": "Video"
+        },
+        {
+          "width": 1280,
+          "height": 720,
+          "fps": 30,
+          "frame_rate_numerator": 30,
+          "frame_rate_denominator": 1,
+          "pixel_format": "MJPG",
+          "media_type": "Video"
+        },
+        {
+          "width": 1280,
+          "height": 720,
+          "fps": 25,
+          "frame_rate_numerator": 25,
+          "frame_rate_denominator": 1,
+          "pixel_format": "NV12",
+          "media_type": "Video"
+        },
+        {
+          "width": 1280,
+          "height": 720,
+          "fps": 25,
+          "frame_rate_numerator": 25,
+          "frame_rate_denominator": 1,
+          "pixel_format": "MJPG",
+          "media_type": "Video"
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "fps": 30,
+          "frame_rate_numerator": 30,
+          "frame_rate_denominator": 1,
+          "pixel_format": "NV12",
+          "media_type": "Video"
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "fps": 30,
+          "frame_rate_numerator": 30,
+          "frame_rate_denominator": 1,
+          "pixel_format": "MJPG",
+          "media_type": "Video"
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "fps": 25,
+          "frame_rate_numerator": 25,
+          "frame_rate_denominator": 1,
+          "pixel_format": "NV12",
+          "media_type": "Video"
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "fps": 25,
+          "frame_rate_numerator": 25,
+          "frame_rate_denominator": 1,
+          "pixel_format": "MJPG",
+          "media_type": "Video"
+        },
+        {
+          "width": 640,
+          "height": 480,
+          "fps": 30,
+          "frame_rate_numerator": 30,
+          "frame_rate_denominator": 1,
+          "pixel_format": "NV12",
+          "media_type": "Video"
+        },
+        {
+          "width": 640,
+          "height": 480,
+          "fps": 30,
+          "frame_rate_numerator": 30,
+          "frame_rate_denominator": 1,
+          "pixel_format": "MJPG",
+          "media_type": "Video"
+        },
+        {
+          "width": 640,
+          "height": 480,
+          "fps": 25,
+          "frame_rate_numerator": 25,
+          "frame_rate_denominator": 1,
+          "pixel_format": "NV12",
+          "media_type": "Video"
+        },
+        {
+          "width": 640,
+          "height": 480,
+          "fps": 25,
+          "frame_rate_numerator": 25,
+          "frame_rate_denominator": 1,
+          "pixel_format": "MJPG",
+          "media_type": "Video"
+        },
+        {
+          "width": 640,
+          "height": 360,
+          "fps": 30,
+          "frame_rate_numerator": 30,
+          "frame_rate_denominator": 1,
+          "pixel_format": "NV12",
+          "media_type": "Video"
+        },
+        {
+          "width": 640,
+          "height": 360,
+          "fps": 30,
+          "frame_rate_numerator": 30,
+          "frame_rate_denominator": 1,
+          "pixel_format": "MJPG",
+          "media_type": "Video"
+        },
+        {
+          "width": 640,
+          "height": 360,
+          "fps": 25,
+          "frame_rate_numerator": 25,
+          "frame_rate_denominator": 1,
+          "pixel_format": "NV12",
+          "media_type": "Video"
+        },
+        {
+          "width": 640,
+          "height": 360,
+          "fps": 25,
+          "frame_rate_numerator": 25,
+          "frame_rate_denominator": 1,
+          "pixel_format": "MJPG",
+          "media_type": "Video"
+        },
+        {
+          "width": 352,
+          "height": 288,
+          "fps": 30,
+          "frame_rate_numerator": 30,
+          "frame_rate_denominator": 1,
+          "pixel_format": "NV12",
+          "media_type": "Video"
+        },
+        {
+          "width": 352,
+          "height": 288,
+          "fps": 30,
+          "frame_rate_numerator": 30,
+          "frame_rate_denominator": 1,
+          "pixel_format": "MJPG",
+          "media_type": "Video"
+        },
+        {
+          "width": 352,
+          "height": 288,
+          "fps": 25,
+          "frame_rate_numerator": 25,
+          "frame_rate_denominator": 1,
+          "pixel_format": "NV12",
+          "media_type": "Video"
+        },
+        {
+          "width": 352,
+          "height": 288,
+          "fps": 25,
+          "frame_rate_numerator": 25,
+          "frame_rate_denominator": 1,
+          "pixel_format": "MJPG",
+          "media_type": "Video"
+        },
+        {
+          "width": 352,
+          "height": 240,
+          "fps": 30,
+          "frame_rate_numerator": 30,
+          "frame_rate_denominator": 1,
+          "pixel_format": "NV12",
+          "media_type": "Video"
+        },
+        {
+          "width": 352,
+          "height": 240,
+          "fps": 30,
+          "frame_rate_numerator": 30,
+          "frame_rate_denominator": 1,
+          "pixel_format": "MJPG",
+          "media_type": "Video"
+        },
+        {
+          "width": 352,
+          "height": 240,
+          "fps": 25,
+          "frame_rate_numerator": 25,
+          "frame_rate_denominator": 1,
+          "pixel_format": "NV12",
+          "media_type": "Video"
+        },
+        {
+          "width": 352,
+          "height": 240,
+          "fps": 25,
+          "frame_rate_numerator": 25,
+          "frame_rate_denominator": 1,
+          "pixel_format": "MJPG",
+          "media_type": "Video"
+        }
+      ],
+      "controls": {
+        "auto_exposure": "No",
+        "exposure": "Yes",
+        "gain": "No",
+        "white_balance": "Yes",
+        "auto_white_balance": "Unknown",
+        "backlight_compensation": "Yes",
+        "low_light_compensation": "Unknown"
+      }
+    }
+  ]
+}

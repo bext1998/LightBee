@@ -1,0 +1,35 @@
+{
+  "generated_at_utc": "2026-09-03T13:07:40.8979434+00:00",
+  "test": "Test 04 Cold Start / Test 05 Exposure Convergence / Test 06 Environment Separation",
+  "execution_mode": "lazy",
+  "camera": {
+    "name": "USB Camera",
+    "device_id": "\\\\?\\USB#VID_5258&PID_4A55&MI_00#7&2c3eb27f&0&0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\\GLOBAL"
+  },
+  "capture_mode": {
+    "width": 640,
+    "height": 480,
+    "fps": 30,
+    "pixel_format": "NV12"
+  },
+  "environment": "sandbox-check-shared3",
+  "camera_sharing": false,
+  "duration_ms": 2000,
+  "repeats": 1,
+  "pause_ms": 1000,
+  "total_cpu_time_ms": 0,
+  "total_wall_time_ms": 341.6834,
+  "csv_path": "raw-data\\luminance-samples.csv",
+  "sessions": [
+    {
+      "session_id": "6895a38c-028b-47eb-83ef-96b930d94a5e",
+      "repeat": 1,
+      "started_at_utc": "2026-09-03T13:07:40.5499204+00:00",
+      "ended_at_utc": "2026-09-03T13:07:40.8862569+00:00",
+      "frame_count": 0,
+      "capture_success": false,
+      "release_success": true,
+      "error": "FileLoadException: 程序無法存取檔案，因為檔案正由另一個程序使用。 (0x80070020)"
+    }
+  ]
+}

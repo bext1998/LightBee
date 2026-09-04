@@ -1,0 +1,62 @@
+{
+  "generated_at_utc": "2026-08-13T15:49:37.7952253+00:00",
+  "test": "Test 04 Cold Start / Test 05 Exposure Convergence / Test 06 Environment Separation",
+  "camera": {
+    "name": "USB Camera",
+    "device_id": "\\\\?\\USB#VID_5258&PID_4A55&MI_00#7&2c3eb27f&0&0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\\GLOBAL"
+  },
+  "capture_mode": {
+    "width": 640,
+    "height": 480,
+    "fps": 30,
+    "pixel_format": "NV12"
+  },
+  "environment": "current-room-baseline",
+  "camera_sharing": false,
+  "duration_ms": 3000,
+  "repeats": 5,
+  "pause_ms": 1000,
+  "csv_path": "raw-data\\luminance-samples.csv",
+  "sessions": [
+    {
+      "session_id": "f1b8f8b3-6bc0-40e5-87ff-cf1148a64c23",
+      "repeat": 1,
+      "started_at_utc": "2026-08-13T15:49:15.536664+00:00",
+      "ended_at_utc": "2026-08-13T15:49:19.2169039+00:00",
+      "frame_count": 0,
+      "error": "Frame processing: InvalidCastException: Invalid cast from 'WinRT.IInspectable' to 'Wcalss.CameraProbe.IMemoryBufferByteAccess'."
+    },
+    {
+      "session_id": "480aef5c-a013-4e6c-849b-663f78b3f08f",
+      "repeat": 2,
+      "started_at_utc": "2026-08-13T15:49:20.2301124+00:00",
+      "ended_at_utc": "2026-08-13T15:49:23.8582035+00:00",
+      "frame_count": 0,
+      "error": "Frame processing: InvalidCastException: Invalid cast from 'WinRT.IInspectable' to 'Wcalss.CameraProbe.IMemoryBufferByteAccess'."
+    },
+    {
+      "session_id": "0f5025ef-8f1b-4e1b-a577-a80983e53ad8",
+      "repeat": 3,
+      "started_at_utc": "2026-08-13T15:49:24.86101+00:00",
+      "ended_at_utc": "2026-08-13T15:49:28.4965388+00:00",
+      "frame_count": 0,
+      "error": "Frame processing: InvalidCastException: Invalid cast from 'WinRT.IInspectable' to 'Wcalss.CameraProbe.IMemoryBufferByteAccess'."
+    },
+    {
+      "session_id": "a302c4d8-7264-44b5-bb36-a6e96385e7fe",
+      "repeat": 4,
+      "started_at_utc": "2026-08-13T15:49:29.5095466+00:00",
+      "ended_at_utc": "2026-08-13T15:49:33.1358712+00:00",
+      "frame_count": 0,
+      "error": "Frame processing: InvalidCastException: Invalid cast from 'WinRT.IInspectable' to 'Wcalss.CameraProbe.IMemoryBufferByteAccess'."
+    },
+    {
+      "session_id": "d74d76e3-6c8e-432f-95ed-deadaa4c55a9",
+      "repeat": 5,
+      "started_at_utc": "2026-08-13T15:49:34.1507785+00:00",
+      "ended_at_utc": "2026-08-13T15:49:37.7785759+00:00",
+      "frame_count": 0,
+      "error": "Frame processing: InvalidCastException: Invalid cast from 'WinRT.IInspectable' to 'Wcalss.CameraProbe.IMemoryBufferByteAccess'."
+    }
+  ]
+}

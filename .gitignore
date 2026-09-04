@@ -1,0 +1,18 @@
+# .NET build artifacts
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio and Rider
+.vs/
+.idea/
+*.user
+*.suo
+
+# Publish output and diagnostics
+publish/
+TestResults/
+*.log
+
+# Local application data and validation records
+validation-log.csv
+config.json

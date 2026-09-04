@@ -1,0 +1,32 @@
+{
+  "generated_at_utc": "2026-08-13T16:40:05.2908569+00:00",
+  "test": "Test 09 Persistent vs Lazy",
+  "execution_mode": "persistent",
+  "camera": {
+    "name": "USB Camera",
+    "device_id": "\\\\?\\USB#VID_5258&PID_4A55&MI_00#7&2c3eb27f&0&0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\\GLOBAL"
+  },
+  "capture_mode": {
+    "width": 640,
+    "height": 480,
+    "fps": 30,
+    "pixel_format": "NV12"
+  },
+  "environment": "endurance-persistent",
+  "camera_sharing": false,
+  "total_duration_ms": 120000,
+  "total_cpu_time_ms": 4671.875,
+  "total_wall_time_ms": 120673.7425,
+  "open_latency_ms": 82.4125,
+  "csv_path": "raw-data\\luminance-samples.csv",
+  "session": {
+    "session_id": "fde25600-135a-4522-bc6f-840c3aafa035",
+    "repeat": 1,
+    "started_at_utc": "2026-08-13T16:38:04.6038822+00:00",
+    "ended_at_utc": "2026-08-13T16:40:05.2747076+00:00",
+    "frame_count": 3599,
+    "open_latency_ms": 82.4125,
+    "capture_success": true,
+    "release_success": true
+  }
+}

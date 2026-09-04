@@ -1,0 +1,75 @@
+{
+  "generated_at_utc": "2026-08-14T03:03:40.9297681+00:00",
+  "test": "Test 04 Cold Start / Test 05 Exposure Convergence / Test 06 Environment Separation",
+  "execution_mode": "lazy",
+  "camera": {
+    "name": "USB Camera",
+    "device_id": "\\\\?\\USB#VID_5258&PID_4A55&MI_00#7&2c3eb27f&0&0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\\GLOBAL"
+  },
+  "capture_mode": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "pixel_format": "NV12"
+  },
+  "environment": "day-overcast",
+  "camera_sharing": false,
+  "duration_ms": 3000,
+  "repeats": 5,
+  "pause_ms": 1000,
+  "total_cpu_time_ms": 4125,
+  "total_wall_time_ms": 22232.6763,
+  "csv_path": "raw-data\\luminance-samples.csv",
+  "sessions": [
+    {
+      "session_id": "eb34c470-ce44-4d96-b2f3-7206da9d27e9",
+      "repeat": 1,
+      "started_at_utc": "2026-08-14T03:03:18.6901124+00:00",
+      "ended_at_utc": "2026-08-14T03:03:22.349387+00:00",
+      "frame_count": 76,
+      "open_latency_ms": 85.9226,
+      "capture_success": true,
+      "release_success": true
+    },
+    {
+      "session_id": "48d2234a-d3dc-48d1-85b1-176041c25d14",
+      "repeat": 2,
+      "started_at_utc": "2026-08-14T03:03:23.3748241+00:00",
+      "ended_at_utc": "2026-08-14T03:03:27.0067005+00:00",
+      "frame_count": 75,
+      "open_latency_ms": 70.8023,
+      "capture_success": true,
+      "release_success": true
+    },
+    {
+      "session_id": "bb69a301-b79d-48d7-98a5-081e450a3e8c",
+      "repeat": 3,
+      "started_at_utc": "2026-08-14T03:03:28.0153884+00:00",
+      "ended_at_utc": "2026-08-14T03:03:31.6466262+00:00",
+      "frame_count": 75,
+      "open_latency_ms": 70.42,
+      "capture_success": true,
+      "release_success": true
+    },
+    {
+      "session_id": "ee2a2b03-dcf7-4ca4-82be-d39fd809dcf3",
+      "repeat": 4,
+      "started_at_utc": "2026-08-14T03:03:32.6481657+00:00",
+      "ended_at_utc": "2026-08-14T03:03:36.2766775+00:00",
+      "frame_count": 76,
+      "open_latency_ms": 70.0653,
+      "capture_success": true,
+      "release_success": true
+    },
+    {
+      "session_id": "257dc95f-1d46-44b1-a716-58fe53253ef8",
+      "repeat": 5,
+      "started_at_utc": "2026-08-14T03:03:37.2845138+00:00",
+      "ended_at_utc": "2026-08-14T03:03:40.9207093+00:00",
+      "frame_count": 76,
+      "open_latency_ms": 73.342,
+      "capture_success": true,
+      "release_success": true
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "generated_at_utc": "2026-08-13T15:51:24.6454859+00:00",
+  "test": "Test 04 Cold Start / Test 05 Exposure Convergence / Test 06 Environment Separation",
+  "camera": {
+    "name": "USB Camera",
+    "device_id": "\\\\?\\USB#VID_5258&PID_4A55&MI_00#7&2c3eb27f&0&0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\\GLOBAL"
+  },
+  "capture_mode": {
+    "width": 640,
+    "height": 480,
+    "fps": 30,
+    "pixel_format": "NV12"
+  },
+  "environment": "current-room-baseline",
+  "camera_sharing": false,
+  "duration_ms": 3000,
+  "repeats": 5,
+  "pause_ms": 1000,
+  "csv_path": "raw-data\\luminance-samples.csv",
+  "sessions": [
+    {
+      "session_id": "6332d78d-5f41-42c6-b19b-cc0f50da60de",
+      "repeat": 1,
+      "started_at_utc": "2026-08-13T15:51:02.3901642+00:00",
+      "ended_at_utc": "2026-08-13T15:51:06.0473623+00:00",
+      "frame_count": 0,
+      "error": "Frame processing: InvalidCastException: 沒有可用的擷取裝置。"
+    },
+    {
+      "session_id": "22ec7b17-a599-45b6-8075-08b629de4a9e",
+      "repeat": 2,
+      "started_at_utc": "2026-08-13T15:51:07.0608494+00:00",
+      "ended_at_utc": "2026-08-13T15:51:10.6882124+00:00",
+      "frame_count": 0,
+      "error": "Frame processing: InvalidCastException: Specified cast is not valid."
+    },
+    {
+      "session_id": "e8058105-7f0b-427d-8663-d07311a9693f",
+      "repeat": 3,
+      "started_at_utc": "2026-08-13T15:51:11.7007314+00:00",
+      "ended_at_utc": "2026-08-13T15:51:15.3219783+00:00",
+      "frame_count": 0,
+      "error": "Frame processing: InvalidCastException: Specified cast is not valid."
+    },
+    {
+      "session_id": "01704a9d-28ca-488e-b9b3-88fc02a569bd",
+      "repeat": 4,
+      "started_at_utc": "2026-08-13T15:51:16.3352125+00:00",
+      "ended_at_utc": "2026-08-13T15:51:19.9816823+00:00",
+      "frame_count": 0,
+      "error": "Frame processing: InvalidCastException: Specified cast is not valid."
+    },
+    {
+      "session_id": "c7c9c252-3153-48e3-8a30-f1e946a63bb6",
+      "repeat": 5,
+      "started_at_utc": "2026-08-13T15:51:20.9821208+00:00",
+      "ended_at_utc": "2026-08-13T15:51:24.6282564+00:00",
+      "frame_count": 0,
+      "error": "Frame processing: InvalidCastException: Specified cast is not valid."
+    }
+  ]
+}
