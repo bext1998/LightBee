@@ -23,6 +23,8 @@
   - 取樣窗提前結束：窗內收斂期後的讀值一穩定（沿用 Test 04/05 的 max−min ≤ 0.01 判定）就提前結束取樣，不必每次等滿 1.2 秒。
   - 相關參數可在 `%AppData%\WCALSS\AmbientBrightness\config.json` 調整（`AdaptiveFastIntervalMs`、`AdaptiveDeltaThreshold`、`AdaptiveBoundaryMargin`、`AdaptiveMaxFastCycles`），設定視窗尚未加入這些欄位。
 - **相機工作階段自動重連**：連續 3 輪（約 15 秒）取樣都拿不到畫面時，自動重建相機工作階段，不用整個 App 重啟。這只能處理「這個 App 自己的連線卡住」，處理不了 Windows 相機共用機制本身在系統層級卡死的情況（見下方「已知限制」與報告第 13.4 節）。
+- **釋放路徑加固（報告 §16）**：每次取樣結束時的 `MediaFrameReader.StopAsync()` 以 2 秒 timeout 包起來，卡住就不再等它，確保後面的 `reader`／`MediaCapture` 一定會被 `Dispose()`——回應使用者實測的「一直取樣失敗、關掉 App 相機才恢復」。
+- **相機診斷紀錄**：每次取樣與 init／reconnect 的低階時序（init 花多久、收到幾個 frame、`StopAsync` 是否卡到逾時、`Dispose` 是否跑到、開機後裝置有沒有被列舉）另外寫到 `%AppData%\WCALSS\AmbientBrightness\camera-diagnostics.csv`，與 `validation-log.csv` 分開；用來佐證報告 §13.3／§13.4 的相機卡死與尚待正式化的 Test 13。
 
 ## 建置與執行
 

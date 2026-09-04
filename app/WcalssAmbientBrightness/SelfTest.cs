@@ -2,9 +2,10 @@ namespace Wcalss.AmbientBrightness;
 
 /// <summary>
 /// 自檢模式（--selftest）：把單元測試直接內建在主專案裡，維持「只有一個 WcalssAmbientBrightness 資料夾」的專案結構，
-/// 不需要獨立的測試專案與測試框架。涵蓋兩部分：
+/// 不需要獨立的測試專案與測試框架。涵蓋三部分：
 /// 1. 新邏輯：SampleSmoother（自適應 EMA）、SamplePacing（自適應取樣間隔）、LuminanceStability（取樣窗提前結束判定）
 /// 2. BrightnessMapper 既有行為的回歸測試：雙重確認、遲滯（含 12.4 節修過的負邊界 bug）、單次突波過濾
+/// 3. AsyncGuard：卡住的非同步工作逾時後不阻擋後續資源釋放（§13.3／§16 的釋放路徑加固）
 /// 全部通過回傳 0（exit code），任一失敗回傳 1 並列出失敗項目，可用於 CI 或接手 agent 的快速驗證。
 /// </summary>
 internal static class SelfTest
@@ -198,6 +199,30 @@ internal static class SelfTest
         {
             double[] values = [0.40, 0.44, 0.45, 0.46, 0.46, 0.46];
             Assert(!LuminanceStability.IsStable(values, minimumCount: 6, tolerance: 0.01));
+        });
+
+        // ── AsyncGuard（釋放路徑不被卡住的 StopAsync 阻擋，對應 §13.3／§16 修復）──
+
+        Check("AsyncGuard: 工作即時完成回報 Completed、無例外", () =>
+        {
+            var result = AsyncGuard.RunAsync(() => Task.CompletedTask, TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+            Assert(result.Completed && result.Error is null, $"completed={result.Completed}, error={result.Error?.GetType().Name ?? "null"}");
+        });
+
+        Check("AsyncGuard: 工作卡住時逾時返回、不拋例外、不等到工作結束", () =>
+        {
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var result = AsyncGuard.RunAsync(() => Task.Delay(TimeSpan.FromSeconds(10)), TimeSpan.FromMilliseconds(100)).GetAwaiter().GetResult();
+            stopwatch.Stop();
+            Assert(!result.Completed, "逾時應回報未完成");
+            Assert(stopwatch.ElapsedMilliseconds < 3000, $"不應阻塞到工作自己結束，實際 {stopwatch.ElapsedMilliseconds}ms");
+        });
+
+        Check("AsyncGuard: 底層工作拋例外仍算已完成（不是卡住），並帶回例外", () =>
+        {
+            var result = AsyncGuard.RunAsync(() => Task.FromException(new InvalidOperationException("boom")), TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+            Assert(result.Completed, "拋例外也算結束");
+            Assert(result.Error is InvalidOperationException, $"error={result.Error?.GetType().Name ?? "null"}");
         });
 
         output.WriteLine($"\n共 {total} 項：通過 {total - failures.Count}，失敗 {failures.Count}");

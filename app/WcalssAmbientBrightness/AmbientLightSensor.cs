@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Windows.Devices.Enumeration;
 using Windows.Graphics.Imaging;
 using Windows.Media.Capture;
@@ -41,8 +42,55 @@ internal sealed class AmbientLightSensor : IDisposable
     /// <summary>裝置與格式只在啟動／設定變更時重新協商一次，對應原本 coldstart 「選一次、重複用」的模式。</summary>
     public async Task PrepareAsync()
     {
-        device = await FindDeviceAsync(deviceName);
-        sourceSelection = await FindColorSourceAsync(device.Id, sharingMode);
+        var stopwatch = Stopwatch.StartNew();
+        var enumerated = await DeviceInformation.FindAllAsync(DeviceClass.VideoCapture);
+        var enumerationMs = stopwatch.ElapsedMilliseconds;
+        var names = enumerated.Select(d => d.Name).ToList();
+        var match = enumerated.FirstOrDefault(d => string.Equals(d.Name, deviceName, StringComparison.OrdinalIgnoreCase));
+
+        stopwatch.Restart();
+        try
+        {
+            device = match ?? throw new InvalidOperationException(
+                $"找不到視訊裝置：{deviceName}。目前列舉到：{string.Join(", ", names)}");
+            sourceSelection = await FindColorSourceAsync(device.Id, sharingMode);
+        }
+        finally
+        {
+            // 即使找不到裝置（開機後相機還沒被列舉）也要留下這筆：EnumeratedDevices 就是
+            // 「相機到底有沒有出現」的直接證據，對應待正式化的 Test 13。
+            LastPrepareDiagnostics = new PrepareDiagnostics
+            {
+                DeviceEnumerationMs = enumerationMs,
+                EnumeratedDevices = names,
+                TargetDeviceFound = match is not null,
+                SourceNegotiationMs = stopwatch.ElapsedMilliseconds,
+                ResolvedFormat = sourceSelection is null ? "" : ResolvedFormatDescription,
+            };
+        }
+    }
+
+    /// <summary>最近一次 <see cref="PrepareAsync"/> 的裝置列舉／格式協商診斷（成功或失敗都會留下）。</summary>
+    public PrepareDiagnostics? LastPrepareDiagnostics { get; private set; }
+
+    /// <summary>
+    /// 只做裝置列舉、不碰 <see cref="MediaCapture"/>，回報目標裝置是否還在（<c>TargetDeviceFound</c>）。
+    /// 用於 §16.6：便宜相機可能整個從 USB bus 掉，此時不該再對 Media Foundation 硬送
+    /// <c>InitializeAsync</c>（每 5 秒秒炸 + 對 MF 高頻 thrash，§13.4 警告過的風險）。
+    /// </summary>
+    public async Task<PrepareDiagnostics> CheckTargetDevicePresenceAsync()
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var enumerated = await DeviceInformation.FindAllAsync(DeviceClass.VideoCapture);
+        var names = enumerated.Select(d => d.Name).ToList();
+        return new PrepareDiagnostics
+        {
+            DeviceEnumerationMs = stopwatch.ElapsedMilliseconds,
+            EnumeratedDevices = names,
+            TargetDeviceFound = names.Any(n => string.Equals(n, deviceName, StringComparison.OrdinalIgnoreCase)),
+            SourceNegotiationMs = 0,
+            ResolvedFormat = "",
+        };
     }
 
     public string ResolvedFormatDescription =>
@@ -64,6 +112,15 @@ internal sealed class AmbientLightSensor : IDisposable
         var openedAtUtc = DateTimeOffset.UtcNow;
         var samples = new List<(DateTimeOffset At, double Mean)>();
         var gate = new object();
+
+        // 診斷欄位：每一步的耗時與結果都記下來，寫進 camera-diagnostics.csv，
+        // 用來佐證 spike-report §13.3／§13.4 的相機工作階段卡死（症狀：一直取樣失敗、關掉 App 才恢復）。
+        long initializeMs = 0, stopAsyncMs = 0, readerDisposeMs = 0, mediaCaptureDisposeMs = 0, sampleWindowMs = 0;
+        var initialized = false;
+        var startStatus = "not-reached";
+        var stopAsyncTimedOut = false;
+        var failedStep = "none";
+        string? failureDetail = null;
 
         void OnFrameArrived(MediaFrameReader sender, MediaFrameArrivedEventArgs args)
         {
@@ -88,9 +145,11 @@ internal sealed class AmbientLightSensor : IDisposable
             }
         }
 
+        var stepWatch = Stopwatch.StartNew();
         try
         {
             mediaCapture = new MediaCapture();
+            stepWatch.Restart();
             await mediaCapture.InitializeAsync(new MediaCaptureInitializationSettings
             {
                 SourceGroup = sourceSelection.Group,
@@ -98,6 +157,8 @@ internal sealed class AmbientLightSensor : IDisposable
                 MemoryPreference = MediaCaptureMemoryPreference.Cpu,
                 StreamingCaptureMode = StreamingCaptureMode.Video
             });
+            initializeMs = stepWatch.ElapsedMilliseconds;
+            initialized = true;
 
             var source = mediaCapture.FrameSources[sourceSelection.Info.Id];
             await source.SetFormatAsync(sourceSelection.Format);
@@ -105,83 +166,131 @@ internal sealed class AmbientLightSensor : IDisposable
             reader.FrameArrived += OnFrameArrived;
 
             var status = await reader.StartAsync();
+            startStatus = status.ToString();
             if (status != MediaFrameReaderStartStatus.Success)
             {
-                return SampleResult.Failed($"MediaFrameReader.StartAsync 狀態：{status}");
+                failedStep = "start";
+                failureDetail = $"MediaFrameReader.StartAsync 狀態：{status}";
             }
-
-            readerStarted = true;
-            while (true)
+            else
             {
-                var elapsedMs = (int)(DateTimeOffset.UtcNow - openedAtUtc).TotalMilliseconds;
-                var waitMs = Math.Min(EarlyCheckIntervalMs, Math.Max(0, SampleWindowMs - elapsedMs));
-                if (waitMs <= 0)
+                readerStarted = true;
+                while (true)
                 {
-                    break;
+                    var elapsedMs = (int)(DateTimeOffset.UtcNow - openedAtUtc).TotalMilliseconds;
+                    var waitMs = Math.Min(EarlyCheckIntervalMs, Math.Max(0, SampleWindowMs - elapsedMs));
+                    if (waitMs <= 0)
+                    {
+                        break;
+                    }
+
+                    await Task.Delay(waitMs);
+                    List<(DateTimeOffset At, double Mean)> snapshot;
+                    lock (gate)
+                    {
+                        snapshot = samples.ToList();
+                    }
+
+                    var window = snapshot
+                        .Where(s => (s.At - openedAtUtc).TotalMilliseconds >= ConvergenceSkipMs)
+                        .Select(s => s.Mean)
+                        .ToArray();
+                    if (LuminanceStability.IsStable(window, MinConvergedFramesForEarlyExit, StabilityTolerance))
+                    {
+                        break;
+                    }
                 }
 
-                await Task.Delay(waitMs);
-                List<(DateTimeOffset At, double Mean)> snapshot;
-                lock (gate)
-                {
-                    snapshot = samples.ToList();
-                }
-
-                var window = snapshot
-                    .Where(s => (s.At - openedAtUtc).TotalMilliseconds >= ConvergenceSkipMs)
-                    .Select(s => s.Mean)
-                    .ToArray();
-                if (LuminanceStability.IsStable(window, MinConvergedFramesForEarlyExit, StabilityTolerance))
-                {
-                    break;
-                }
+                sampleWindowMs = (long)(DateTimeOffset.UtcNow - openedAtUtc).TotalMilliseconds;
             }
         }
         catch (Exception ex)
         {
+            if (!initialized)
+            {
+                initializeMs = stepWatch.ElapsedMilliseconds;
+                failedStep = "initialize";
+            }
+            else if (failedStep == "none")
+            {
+                failedStep = "post-init";
+            }
+
             // ex.Message 在部分 WinRT HRESULT（例如 0x80070020 sharing violation）projection 成
-            // managed 例外時可能是空字串，所以一定要帶上 HResult，不然驗證紀錄裡的錯誤訊息會是空的、沒有診斷價值。
+            // managed 例外時可能是空字串，所以一定要帶上 HResult，不然診斷紀錄裡的錯誤訊息會是空的、沒有診斷價值。
             var detail = string.IsNullOrWhiteSpace(ex.Message) ? "(無訊息文字)" : ex.Message;
-            return SampleResult.Failed($"{ex.GetType().Name} (0x{ex.HResult:X8}): {detail}");
+            failureDetail = $"{ex.GetType().Name} (0x{ex.HResult:X8}): {detail}";
         }
         finally
         {
-            if (reader is not null)
+            // 釋放路徑加固（回應 §13.3／§16 讀碼發現）：原本 finally 直接 await reader.StopAsync()，
+            // 一旦它卡住不返回，後面的 mediaCapture.Dispose() 就永遠跑不到，相機控制代碼會被 App
+            // 持有到 process 結束。現在：事件一定先解除；StopAsync 包 2 秒 timeout，卡住就不再等它；
+            // reader 與 mediaCapture 各自獨立 Dispose，彼此不受影響、也不受 StopAsync 影響。
+            if (reader is { } activeReader)
             {
+                activeReader.FrameArrived -= OnFrameArrived;
+
                 if (readerStarted)
                 {
-                    try { await reader.StopAsync(); } catch { /* Release 失敗不影響已取得的樣本 */ }
+                    var stop = await AsyncGuard.RunAsync(
+                        async () => await activeReader.StopAsync(),
+                        TimeSpan.FromSeconds(2));
+                    stopAsyncMs = stop.ElapsedMs;
+                    stopAsyncTimedOut = !stop.Completed;
                 }
-                reader.FrameArrived -= OnFrameArrived;
+
+                var readerDisposeWatch = Stopwatch.StartNew();
+                try { activeReader.Dispose(); } catch { /* Dispose 失敗不影響後續釋放 */ }
+                readerDisposeMs = readerDisposeWatch.ElapsedMilliseconds;
             }
 
-            mediaCapture?.Dispose();
+            var mediaCaptureDisposeWatch = Stopwatch.StartNew();
+            try { mediaCapture?.Dispose(); } catch { /* 同上，確保一定被呼叫到 */ }
+            mediaCaptureDisposeMs = mediaCaptureDisposeWatch.ElapsedMilliseconds;
         }
 
-        // 只取收斂期之後的 frame 計算平均值，對應 Test 04/05 的實測收斂時間。
         List<(DateTimeOffset At, double Mean)> finalSnapshot;
         lock (gate)
         {
             finalSnapshot = samples.ToList();
         }
 
-        var converged = finalSnapshot.Where(s => (s.At - openedAtUtc).TotalMilliseconds >= ConvergenceSkipMs).ToList();
-        var usable = converged.Count > 0 ? converged : finalSnapshot;
-
-        if (usable.Count == 0)
+        double meanLuminance = 0;
+        var usableFrames = 0;
+        if (failureDetail is null)
         {
-            return SampleResult.Failed("取樣期間沒有任何 frame 抵達（安靜失敗，對應 Test 10 觀察到的情況：Camera Sharing 關閉時 FrameArrived 不會觸發）。");
+            // 只取收斂期之後的 frame 計算平均值，對應 Test 04/05 的實測收斂時間。
+            var converged = finalSnapshot.Where(s => (s.At - openedAtUtc).TotalMilliseconds >= ConvergenceSkipMs).ToList();
+            var usable = converged.Count > 0 ? converged : finalSnapshot;
+            if (usable.Count == 0)
+            {
+                failedStep = "no-frames";
+                failureDetail = "取樣期間沒有任何 frame 抵達（安靜失敗，對應 Test 10 觀察到的情況：Camera Sharing 關閉時 FrameArrived 不會觸發）。";
+            }
+            else
+            {
+                meanLuminance = usable.Average(s => s.Mean);
+                usableFrames = usable.Count;
+            }
         }
 
-        var meanLuminance = usable.Average(s => s.Mean);
-        return SampleResult.Ok(meanLuminance, finalSnapshot.Count, usable.Count);
-    }
+        var diagnostics = new SampleDiagnostics
+        {
+            InitializeMs = initializeMs,
+            StartStatus = startStatus,
+            FramesArrived = finalSnapshot.Count,
+            SampleWindowMs = sampleWindowMs,
+            StopAsyncMs = stopAsyncMs,
+            StopAsyncTimedOut = stopAsyncTimedOut,
+            ReaderDisposeMs = readerDisposeMs,
+            MediaCaptureDisposeMs = mediaCaptureDisposeMs,
+            FailedStep = failedStep,
+        };
 
-    private static async Task<DeviceInformation> FindDeviceAsync(string deviceName)
-    {
-        var devices = await DeviceInformation.FindAllAsync(DeviceClass.VideoCapture);
-        var device = devices.FirstOrDefault(d => string.Equals(d.Name, deviceName, StringComparison.OrdinalIgnoreCase));
-        return device ?? throw new InvalidOperationException($"找不到視訊裝置：{deviceName}。目前列舉到：{string.Join(", ", devices.Select(d => d.Name))}");
+        return failureDetail is null
+            ? SampleResult.Ok(meanLuminance, finalSnapshot.Count, usableFrames) with { Diagnostics = diagnostics }
+            : SampleResult.Failed(failureDetail) with { Diagnostics = diagnostics };
     }
 
     private static async Task<SourceSelection> FindColorSourceAsync(string deviceId, MediaCaptureSharingMode sharingMode)
@@ -289,6 +398,9 @@ internal sealed record SourceSelection(MediaFrameSourceGroup Group, MediaFrameSo
 
 internal sealed record SampleResult(bool Success, double MeanLuminance, int TotalFrames, int UsableFrames, string? Error)
 {
+    /// <summary>相機工作階段的低階時序診斷（每次取樣都會附上，供 camera-diagnostics.csv 記錄）。</summary>
+    public SampleDiagnostics? Diagnostics { get; init; }
+
     public static SampleResult Ok(double meanLuminance, int totalFrames, int usableFrames) =>
         new(true, meanLuminance, totalFrames, usableFrames, null);
 

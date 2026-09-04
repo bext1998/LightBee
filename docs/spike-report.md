@@ -411,6 +411,10 @@ Generic PnP Monitor: DDC/CI brightness supported, raw=80, range=0-100
 
 這不代表問題在所有擺放情境下都解決了——本輪只驗證了「這一個新角度」有效，14.6 節提到的窗戶／反光表面對讀值的影響仍未系統性測試（例如刻意打開窗簾、調整不同反光角度做對照）。但至少證明了 14.4 節建議的「硬體層面：確保相機擺放角度看不到螢幕本身或其明顯反射光」這個方向是可行、且用實測數據驗證過的解法，不是紙上談兵的建議。
 
+### 14.8 擺放不限於「螢幕上方朝使用者」：朝牆壁也可行（使用者觀察，2026-09-04）
+
+使用者發現相機不一定要架在螢幕上方對著自己，直接對著一面牆壁也能運作。牆面讀到的是室內反射／間接光，本身就是「房間有多亮」的合理代理量，而且因為完全看不到螢幕，天生迴避了 14.1～14.4 節的螢幕內容回饋問題。代價是這面牆上的內容會混進訊號：局部的燈光熱點、有人走動造成的移動陰影、或牆色本身，都會影響讀值；而且照不到那面牆的光源不會被感知到。這是一個尚未系統性測試的新擺放選項，可與 §5 Nice-to-have 的「相機擺放引導」一併考慮（引導文案不必假設只有「架在螢幕上」一種擺法）。
+
 ---
 
 ## 15. 自適應取樣與平滑的實作補強（2026-09-04，尚待真機端對端驗證）
@@ -441,15 +445,80 @@ Generic PnP Monitor: DDC/CI brightness supported, raw=80, range=0-100
 dotnet run -- --selftest
 ```
 
-2026-09-04 執行結果為 **19/19 通過**，涵蓋：
+2026-09-04 執行結果為 **19/19 通過**（同日稍晚 §16 加入 3 項 `AsyncGuard` 自檢後為 **22/22**），涵蓋：
 
 - 三段分級的首次判定、雙重確認、遲滯與第 12.4 節最低分級邊界修復；
 - 自適應 EMA 的小擾動、強變化、尾窗與突波回復；
 - 自適應取樣的快／慢切換、失敗退避與快模式上限；
-- 取樣窗的收斂判定。
+- 取樣窗的收斂判定；
+- （§16）`AsyncGuard`：卡住的 `StopAsync` 逾時後不阻擋後續 `Dispose`。
 
 這些自檢不會開啟相機或寫入 DDC/CI，不能取代真機證據。本節新增的自適應平滑、快取樣與提前結束功能尚未完成新的「相機取樣 → 分級 → 漸進調光」端對端實測，也沒有改變 Gate A／B／C 的既有判定。後續真機驗證應同時確認：
 
 1. 關燈／開燈後能在可接受時間內到達既有三段目標，且不因短暫突波誤切換；
 2. 快模式結束後會退回慢間隔，長時間執行不引發相機共享卡死；
 3. 第 14.7 節已驗證的相機角度下，螢幕白色內容仍不會污染輸入訊號。
+
+---
+
+## 16. 釋放路徑加固與相機診斷紀錄（2026-09-04，讀碼發現，尚待真機 Test 13 佐證）
+
+### 16.1 觸發：使用者觀察到「一直取樣失敗、關掉 App 相機才恢復」
+
+使用者實測回報兩個現象：(a) 這顆便宜 USB 網路攝影機在電腦開機後可能沒被正確初始化，未使用本 App 前處於 disconnect 狀態；(b) 一旦本 App 進入連續取樣失敗，**把 App 關掉之後相機就恢復正常**。現象 (b) 跟 §13.3 記錄的「App 自己的相機工作階段卡住、獨立探測工具卻正常」是同一類——卡住的是本 App 持有的工作階段，而 process 結束會強制釋放。
+
+### 16.2 讀碼發現的可疑點（尚未 runtime 驗證）
+
+`AmbientLightSensor.SampleOnceAsync()` 原本的 `finally` 依序執行 `await reader.StopAsync()` → `mediaCapture.Dispose()`。已知 `MediaFrameReader.StopAsync()` 在 FrameServer 打嗝時可能長時間不返回；一旦它卡住，後面的 `mediaCapture.Dispose()` 就永遠跑不到，這個 `MediaCapture` 的相機控制代碼會被 App 持有到 process 結束，正好對應現象 (b)。此外 `reader`（`MediaFrameReader`）從頭到尾沒有被 `Dispose()`，只 `StopAsync()`。次要放大因素：`TryReconnectSensorAsync` 每次重連都會透過 `PrepareAsync → FindColorSourceAsync` 額外 `new MediaCapture()` 一次只為讀格式，在「已經連續失敗」的當下製造更密集的相機開關 churn（§13.4 記錄過這類模式會把 Camera Sharing 測到系統層級卡死）。
+
+### 16.3 已做的加固
+
+- **`SampleOnceAsync` 的 `finally` 改為不可被卡住**：事件處理器一定先解除；`StopAsync()` 以 `AsyncGuard`（新檔）包 2 秒 timeout，卡住就不再等它；`reader` 與 `mediaCapture` 各自獨立 `try/catch` Dispose，彼此不受影響、也不受 `StopAsync` 影響。`reader` 現在會被 `Dispose()`。
+- **`TryReconnectSensorAsync` 換手前先 `Dispose()` 舊 sensor**（原本直接捨棄）。
+- **`AsyncGuard`**：逾時後不取消底層工作（WinRT `StopAsync`／`IClosable` 不保證可取消），只是停止等待，確保呼叫端的釋放一定執行得到。3 項自檢見 §15.4（22/22）。
+
+### 16.4 新增 `camera-diagnostics.csv`（Test 13 證據來源）
+
+新增 `CameraDiagnosticsLog`，寫到獨立於 `validation-log.csv` 的：
+
+```text
+%AppData%\WCALSS\AmbientBrightness\camera-diagnostics.csv
+```
+
+每次取樣與每次 init／reconnect 各記一列，欄位含：`initialize_ms`、`start_status`、`frames_arrived`、`sample_window_ms`、`stop_async_ms`、`stop_async_timed_out`、`reader_dispose_ms`、`media_capture_dispose_ms`、`failed_step`（none／initialize／start／post-init／no-frames），以及 prepare 階段的 `device_enum_ms`、`enumerated_devices`、`target_device_found`、`resolved_format`。這幾欄就是回答以下問題的直接資料：`stop_async_timed_out=True` → §13.3 那種卡死的直接證據；`enumerated_devices` 是否為空 → 開機後相機到底有沒有被 Windows 列舉（現象 a）。
+
+### 16.5 真機擷取結果（2026-09-04，`camera-diagnostics.csv`）
+
+用加固後的版本執行，04:06–04:09 的一段紀錄如實推翻了 §16.2 的主要假設：
+
+- **釋放路徑沒有卡住**：所有成功取樣的 `stop_async_ms` 穩定在 255–262ms、`stop_async_timed_out` 全為 `False`、`media_capture_dispose_ms` 每次都有值（~205ms）。2 秒 timeout 一次都沒觸發。「`StopAsync` 卡住 → `Dispose` 跑不到 → 控制代碼洩漏到 process 結束」在這次擷取中沒有發生。
+- **真正的失敗是 USB 裝置掉線**：04:06:49 起 `InitializeAsync` 在 0–4ms 內炸出 `COMException 0xC00D36B2`（`MF_E_INVALIDREQUEST`，錯誤文字帶 `deviceActivateCount`）；接著約 70 秒間，`reconnect` 的 `enumerated_devices` 一直是空的、`DeviceInformation.FindAllAsync(VideoCapture)` 回傳零裝置，之後錯誤升級為 `0xC00DABE0`（`MF_E_NO_CAPTURE_DEVICES_AVAILABLE`）。裝置在 OS 層級整個從匯流排上消失，不是被佔用。`deviceActivateCount` 是 Media Foundation 對「活著的 activation 底下裝置突然被拔掉」的反應。
+- **自動重連自己救回來了**：04:08:00 `reconnect` 成功（裝置重新列舉為 `USB Camera`，格式從 1920×1080 變回 640×480，順帶清掉 §5.2 的 Camera Sharing 殘留鎖），之後恢復健康取樣。這一輪沒有需要「關掉 App 才恢復」。
+
+結論：§16.3 的加固無害且正確（未來若 `stop_async_timed_out=True` 會立刻現形），但這次真機資料**沒有**證實它曾是病因。這台機器上觀察到的是便宜相機的硬體掉線，軟體層無法修復掉線本身。§16.1 現象 (b)（舊版「關 App 才恢復」）無診斷紀錄可比對，暫時無法歸因。這仍值得正式化為 Test 13（USB 熱插拔／disconnect），補記開機後 `enumerated_devices` 狀態與「什麼動作讓相機恢復」。這不改變 Gate A／B／C 的既有判定。
+
+### 16.6 裝置離線前置檢查（回應 §16.5 的實際發現）
+
+裝置已從列舉消失時，原本的行為是每 5 秒仍對 Media Foundation 硬送一次 `InitializeAsync`（0–4ms 秒炸）＋每 15 秒一次完整重連。§13.4 警告過這種對 MF／裝置的高頻 thrash 可能把 Camera Sharing 推進系統級卡死（這次沒發生，但風險面相同）。
+
+加上：`AmbientLightSensor.CheckTargetDevicePresenceAsync()` 只做裝置列舉、不碰 `MediaCapture`。`TrayContext` 在**已經處於連續失敗狀態**（`consecutiveSampleFailures > 0`）時先跑這道檢查；目標裝置不在列舉中就略過本輪取樣、不觸碰相機 API，`camera-diagnostics.csv` 記一列 `phase=device-check`。健康路徑（首次失敗前）不受影響、零額外開銷；掉線後最多只多吃一次 0–4ms 的 `InitializeAsync` 失敗，之後就完全不戳 MF。`PrepareAsync`（重連用）本來就會在裝置缺席時 fail-fast 且不建立 `MediaCapture`，維持不變。
+
+這段只能在真機的裝置掉線情境驗證（即 §16.5 重現的那種），`--selftest` 不涵蓋。
+
+### 16.7 待處理：啟動時相機不在，之後插回 USB 不會被自動偵測（2026-09-04，使用者回報 + log 佐證）
+
+使用者回報：USB 相機拔掉後再插回去，App 不會自己重新偵測到、不會恢復。`camera-diagnostics.csv` 佐證了機制：
+
+- 04:10–04:15 一段運作中，出現數次 `failed_step=no-frames` 的間歇失敗，且 `initialize_ms` 逐次升高（1259 → 1129 → 1642 → 3386ms），每次下一輪自行恢復——相機在完全掉線前已經在劣化。
+- 04:15:26 最後一筆取樣後中斷約 90 秒（App 被關閉）。
+- 04:16:56 一列 `phase=initialize, success=False, InvalidOperationException (0x80131509)`，`enumerated_devices` 為空、`target_device_found=False`——**App 重啟時 `PrepareAsync` 找不到相機**。
+- log 到此為止，之後沒有任何列。
+
+**識別到的缺口**：兩條恢復路徑不對稱。
+
+| 情境 | 目前行為 |
+|---|---|
+| 相機在**運作中**掉線 | `sampleTimer` 持續 tick → 取樣連續失敗 → 3 次後 `TryReconnectSensorAsync` → §16.6 前置檢查生效 → 裝置回來時恢復（§16.5 的 04:08:00 已驗證有效） |
+| 相機在**啟動時／設定變更 re-init 時**不在 | `TrayContext.InitializeAsync` 的 `PrepareAsync` 拋例外 → `sensorReady=false` → **`sampleTimer` 從未 `Start()`** → `SampleOnceAsync` 因 `!sensorReady` 永遠 early-return → 沒有任何東西在輪詢 → 之後插回 USB 也不會被發現，App 卡死直到手動重啟 |
+
+**修法方向（下班後處理，尚未實作）**：`InitializeAsync` 失敗時不要就停住——起一個慢速重試（例如每 15–30 秒再跑一次 `PrepareAsync`，成功才 `sensorReady=true` 並 `sampleTimer.Start()`），或乾脆一律 `Start()` 讓 `SampleOnceAsync` 在 `sensor is not null && !sensorReady` 時自行嘗試 `PrepareAsync`。重試也要沿用 §16.6 的「裝置不在就只列舉、不戳 MF」原則，避免對 MF 高頻 thrash。`--selftest` 不涵蓋，需真機驗（拔 USB 啟動 App → 插回 → 應在一個重試週期內自動恢復）。

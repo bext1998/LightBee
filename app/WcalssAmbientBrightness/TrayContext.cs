@@ -33,6 +33,7 @@ internal sealed class TrayContext : ApplicationContext
     private BrightnessMapper mapper;  // 由 CreateMapper() 建立，設定變更時重建
     private SamplePacing pacing = null!;
     private readonly ValidationLog validationLog;
+    private readonly CameraDiagnosticsLog cameraDiagnostics = new();
     private readonly BrightnessRamp ramp = new();
     private AmbientLightSensor? sensor;
     private SettingsForm? settingsForm;
@@ -105,6 +106,7 @@ internal sealed class TrayContext : ApplicationContext
             await sensor.PrepareAsync();
             sensorReady = true;
             statusMenuItem.Text = $"狀態：就緒（{sensor.ResolvedFormatDescription}）";
+            cameraDiagnostics.Append("initialize", true, sensor.ResolvedFormatDescription, prepare: sensor.LastPrepareDiagnostics);
 
             // 用螢幕實際回報的目前亮度當漸進控制器的起點，避免第一次判定分級時從一個猜測值開始漸進，
             // 導致跟螢幕實際狀態對不上。讀不到目前亮度（例如兩種控制方式都不可用）就不校正，讓 ramp 保持未知狀態，
@@ -122,6 +124,7 @@ internal sealed class TrayContext : ApplicationContext
         {
             sensorReady = false;
             statusMenuItem.Text = "狀態：相機初始化失敗";
+            cameraDiagnostics.Append("initialize", false, $"{ex.GetType().Name} (0x{ex.HResult:X8})", prepare: sensor?.LastPrepareDiagnostics);
             validationLog.Append(new ValidationLogEntry
             {
                 TimestampUtc = DateTimeOffset.UtcNow,
@@ -143,7 +146,40 @@ internal sealed class TrayContext : ApplicationContext
         sampling = true;
         try
         {
+            // §16.6：已在連續失敗狀態時，先確認裝置還在列舉中；不在就別再對 Media Foundation 硬送
+            // InitializeAsync（便宜相機會整個從 USB bus 掉，§16.5 實測；§13.4 警告過高頻 MF thrash 的風險）。
+            // 健康路徑（首次失敗前）不跑這道檢查，零額外開銷。
+            if (consecutiveSampleFailures > 0)
+            {
+                var presence = await sensor.CheckTargetDevicePresenceAsync();
+                if (!presence.TargetDeviceFound)
+                {
+                    consecutiveSampleFailures++;
+                    cameraDiagnostics.Append("device-check", false, "目標裝置不在列舉清單中，略過本輪取樣、未觸碰相機 API", prepare: presence);
+                    statusMenuItem.Text = $"狀態：相機已離線，等待重新連接（連續 {consecutiveSampleFailures} 輪）";
+                    validationLog.Append(new ValidationLogEntry
+                    {
+                        TimestampUtc = DateTimeOffset.UtcNow,
+                        SampleSucceeded = false,
+                        ValidatedBy = "Gate A / Test 01-03",
+                        Note = $"相機不在裝置列舉中（連續 {consecutiveSampleFailures} 輪），略過本輪取樣、未觸碰相機 API。目前列舉到：{string.Join(", ", presence.EnumeratedDevices)}"
+                    });
+                    settingsForm?.OnLogUpdated();
+
+                    if (consecutiveSampleFailures >= ReconnectAfterConsecutiveFailures)
+                    {
+                        consecutiveSampleFailures = 0;
+                        await TryReconnectSensorAsync();
+                    }
+
+                    pacing.OnSample(success: false, raw: 0, smoothed: 0);
+                    sampleTimer.Interval = pacing.NextIntervalMs();
+                    return;
+                }
+            }
+
             var result = await sensor.SampleOnceAsync();
+            cameraDiagnostics.Append("sample", result.Success, result.Success ? null : result.Error, sample: result.Diagnostics);
             if (!result.Success)
             {
                 consecutiveSampleFailures++;
@@ -233,20 +269,24 @@ internal sealed class TrayContext : ApplicationContext
     /// <summary>
     /// 連續 <see cref="ReconnectAfterConsecutiveFailures"/> 輪取樣都拿不到 frame 時呼叫：
     /// 重新建立一個乾淨的 AmbientLightSensor（等於重新協商裝置與格式、開一個新的相機工作階段），
-    /// 而不是整個 App 重啟。舊的 sensor 直接捨棄（AmbientLightSensor 本身不持有跨次取樣的原生資源，
-    /// 每次 SampleOnceAsync 都會自己開關 MediaCapture，所以捨棄它不會洩漏相機控制代碼）。
+    /// 而不是整個 App 重啟。先 Dispose 舊 sensor 再換上新的；閒置的 AmbientLightSensor 不持有跨次
+    /// 取樣的原生資源（每次 SampleOnceAsync 自己開關 MediaCapture），而取樣進行中的 MediaCapture 由
+    /// §16 加固過的 finally 保證會釋放到，process 不會卡著相機控制代碼。
     /// 重連失敗也不會讓 App 卡死：只是記一筆失敗紀錄，等下一次再連續失敗 3 輪就會再試一次。
     /// </summary>
     private async Task TryReconnectSensorAsync()
     {
         statusMenuItem.Text = "狀態：連續取樣失敗，正在自動重建相機工作階段…";
+        AmbientLightSensor? newSensor = null;
         try
         {
-            var newSensor = new AmbientLightSensor(config.DeviceName, config.ResolvedSharingMode);
+            newSensor = new AmbientLightSensor(config.DeviceName, config.ResolvedSharingMode);
             await newSensor.PrepareAsync();
+            sensor?.Dispose();
             sensor = newSensor;
             statusMenuItem.Text = $"狀態：已自動重連相機（{newSensor.ResolvedFormatDescription}）";
             trayIcon.ShowBalloonTip(4000, "WCALSS 環境光自動亮度", "偵測到相機連續取樣失敗，已自動重建工作階段。", ToolTipIcon.Info);
+            cameraDiagnostics.Append("reconnect", true, newSensor.ResolvedFormatDescription, prepare: newSensor.LastPrepareDiagnostics);
             validationLog.Append(new ValidationLogEntry
             {
                 TimestampUtc = DateTimeOffset.UtcNow,
@@ -258,6 +298,7 @@ internal sealed class TrayContext : ApplicationContext
         catch (Exception ex)
         {
             statusMenuItem.Text = "狀態：自動重連失敗，將於下次連續取樣失敗後再試";
+            cameraDiagnostics.Append("reconnect", false, $"{ex.GetType().Name} (0x{ex.HResult:X8})", prepare: newSensor?.LastPrepareDiagnostics);
             validationLog.Append(new ValidationLogEntry
             {
                 TimestampUtc = DateTimeOffset.UtcNow,
