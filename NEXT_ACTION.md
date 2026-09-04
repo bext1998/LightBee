@@ -8,9 +8,9 @@
 
 ## 行動（最多 3 項）
 
-1. 處理 M1 的產品命名與 `%AppData%` 資料遷移，執行 `--selftest`。
-2. 將 WinRT preview 投影替換為正式 targeting pack，驗證建置與 `--selftest`。
-3. 依 `docs/spec.md` §7 規劃 M3 的真機端對端與長時間穩定性驗證。
+1. 完成 [#1](https://github.com/bext1998/LightBee/issues/1)：產品命名與 `%AppData%` 資料遷移，執行 `--selftest`。
+2. 完成 [#2](https://github.com/bext1998/LightBee/issues/2)：將 WinRT preview 投影替換為正式 targeting pack，驗證建置與 `--selftest`。
+3. 完成 M1 後，依 [#7](https://github.com/bext1998/LightBee/issues/7) 與 [#8](https://github.com/bext1998/LightBee/issues/8) 規劃真機端對端與長時間穩定性驗證。
 
 ## 阻塞與待決策
 
@@ -20,3 +20,5 @@
 
 - docs/spec.md §7、§9
 - docs/spike-report.md §13.4、§15.4
+- https://github.com/bext1998/LightBee/issues/1
+- https://github.com/bext1998/LightBee/issues/2
