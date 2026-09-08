@@ -1,13 +1,10 @@
 namespace Wcalss.AmbientBrightness;
 
 /// <summary>
-/// 自檢模式（--selftest）：把單元測試直接內建在主專案裡，維持「只有一個 WcalssAmbientBrightness 資料夾」的專案結構，
-/// 不需要獨立的測試專案與測試框架。涵蓋三部分：
-/// 1. 新邏輯：SampleSmoother（自適應 EMA）、SamplePacing（自適應取樣間隔）、LuminanceStability（取樣窗提前結束判定）
-/// 2. BrightnessMapper 既有行為的回歸測試：雙重確認、遲滯（含 12.4 節修過的負邊界 bug）、單次突波過濾
-/// 3. AsyncGuard：卡住的非同步工作逾時後不阻擋後續資源釋放（§13.3／§16 的釋放路徑加固）
-/// 4. CameraCompatibility：換相機時的裝置名稱比對與原生格式挑選（§17，不再假設特定型號／NV12）
-/// 全部通過回傳 0（exit code），任一失敗回傳 1 並列出失敗項目，可用於 CI 或接手 agent 的快速驗證。
+/// 自檢模式（--selftest）：單元測試內建在主專案裡，不另開測試專案。涵蓋純邏輯元件——
+/// SampleSmoother、SamplePacing、LuminanceStability、BrightnessMapper（雙重確認／遲滯／突波過濾）、
+/// AsyncGuard（釋放路徑不被卡住的 StopAsync 阻擋）、CameraCompatibility（裝置比對／格式挑選）。
+/// 全數通過回傳 0，任一失敗回傳 1 並列出，可用於 CI 或接手驗證。
 /// </summary>
 internal static class SelfTest
 {

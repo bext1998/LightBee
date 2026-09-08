@@ -35,11 +35,9 @@ internal sealed record PrepareDiagnostics
 }
 
 /// <summary>
-/// 相機工作階段本身的健康紀錄，寫到獨立於 validation-log.csv 的 CSV：
-/// validation-log 是「取樣→分級→套用」對應 Spike Gate/Test 的業務紀錄；
-/// 這裡是「相機工作階段」的低階時序——init 花多久、收到幾個 frame、StopAsync 是否卡住、
-/// Dispose 是否跑到——用來佐證 spike-report §13.3／§13.4 的相機卡死與尚未正式化的 Test 13。
-/// 寫入失敗（例如被 Excel 鎖住）不影響主要行為，與 <see cref="ValidationLog"/> 一致。
+/// 相機工作階段的低階健康紀錄（init 耗時、收到幾個 frame、StopAsync 是否卡住、Dispose 是否跑到、
+/// 開機後裝置有沒有被列舉），寫到獨立於 validation-log.csv 的 camera-diagnostics.csv。
+/// 用來診斷相機卡死／掉線（spike-report §13、§16、§17）。寫入失敗不影響主要行為。
 /// </summary>
 internal sealed class CameraDiagnosticsLog
 {

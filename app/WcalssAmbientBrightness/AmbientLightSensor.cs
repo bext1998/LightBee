@@ -9,21 +9,17 @@ using Windows.Storage.Streams;
 namespace Wcalss.AmbientBrightness;
 
 /// <summary>
-/// 週期性 Open → Sample → Release 取樣環境亮度。
-/// 取樣模式、格式選擇 fallback、Sharing Mode 皆直接沿用
-/// spike/camera-probe/ColdStartCommand.cs 已用 Test 04-06、08、10 驗證過的邏輯，
-/// 不是重新設計——只是把「重複 5 輪」的一次性測試迴圈，改成長時間背景執行的無限迴圈（對應 Test 08 Lazy Acquisition 的驗證結論）。
+/// 週期性 Open → Sample → Release 取樣環境亮度。取樣節奏、格式挑選與釋放路徑的
+/// 設計理由與實測數據見 docs/spike-report.md。
 /// </summary>
 internal sealed class AmbientLightSensor : IDisposable
 {
-    // 略過每次取樣視窗開頭的收斂期，對應 Test 04/05 實測的 Exposure 收斂時間（約 0.44～0.48 秒）。
+    // 略過每次取樣視窗開頭的曝光收斂期（實測約 0.44–0.48 秒，見 spike-report §4）。
     private const int ConvergenceSkipMs = 550;
     private const int SampleWindowMs = 1200;
 
-    // 取樣窗提前結束：窗內每 100ms 檢查一次收斂期後的讀值，一穩定就提前結束，
-    // 不用每次都等滿 1.2 秒。判定門檻沿用 Test 04/05 的收斂定義
-    // （最近 N 個 frame 的 Mean Luminance max−min ≤ 0.01），N 取 6（30 FPS 下約 200ms）。
-    // 上限仍是 SampleWindowMs，收斂慢（例如 Camera Sharing 共存時曝光收斂 511-577ms）也不會取樣不足。
+    // 取樣窗提前結束：窗內每 100ms 檢查一次收斂期後的讀值，最近 6 個 frame（30 FPS 下約 200ms）
+    // 的 mean luminance max−min ≤ 0.01 就提前結束，不必等滿 SampleWindowMs。
     private const int EarlyCheckIntervalMs = 100;
     private const int MinConvergedFramesForEarlyExit = 6;
     private const double StabilityTolerance = 0.01;

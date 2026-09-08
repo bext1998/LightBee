@@ -2,9 +2,9 @@ namespace Wcalss.AmbientBrightness;
 
 /// <summary>
 /// 一個亮度分級區間。上界 (UpperBound) 為 exclusive；最後一段用 double.MaxValue 表示「以上」。
-/// 三段式門檻的預設值直接取自 docs/spike-report.md Test 06 / 5.1 節的實測平均值，
-/// 不是任意假設：Dark ~0.0005、day-overcast（微光自然光）~0.022、有開燈 ~0.45-0.48。
-/// Gate B 的結論明講 normal/bright 兩段測不出差異，所以這裡只做三段，不假裝能連續調光。
+/// 預設門檻取自 spike-report §5.1 / §6 的實測平均（暗 ~0.0005、微光自然光 ~0.022、有開燈 ~0.45–0.48）。
+/// 只做三段、不做連續調光：實測 normal/bright 兩段分不出來（見 spike-report §8）。
+/// 註：這些門檻是舊相機測的，換相機後需重新校正（issue #13）。
 /// </summary>
 internal sealed class LuminanceBand
 {

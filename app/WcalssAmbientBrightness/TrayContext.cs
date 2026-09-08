@@ -4,23 +4,19 @@ using System.Windows.Forms;
 namespace Wcalss.AmbientBrightness;
 
 /// <summary>
-/// 背景常駐主體：System Tray 圖示 + 週期性取樣迴圈。
-/// 對應 docs/spike-report.md 的定位：Gate A（能穩定開關裝置）、Gate B（三段亮度分級）、
-/// Gate C（SharedReadOnly + 週期性 Lazy 取樣，不長時間佔用相機）在這裡合成一個實際會跑的行為。
+/// 背景常駐主體：System Tray 圖示 + 週期性 Open→Sample→Release 取樣迴圈，
+/// 把環境光偵測、三段亮度分級、自動調整螢幕亮度串成一個實際會跑的行為。
+/// 設計理由與實測數據見 docs/spike-report.md。
 /// </summary>
 internal sealed class TrayContext : ApplicationContext
 {
-    // EMA 平滑改成自適應版（SampleSmoother）：原本固定 α=0.5（13.2 節校準過，兩三次取樣追上持續性變化），
-    // 但關燈這種大幅轉換仍要靠多次取樣的指數逼近收尾，在 5 秒取樣間隔下拖慢判定。
-    // 現在小幅擾動仍用 0.5 防抖，大幅變化（|raw−ema| ≥ 0.1）改用 0.9 在 1-2 次取樣內追上；
-    // 往上的分級切換仍受「連續兩次確認」與遲滯把關，防單次突波與螢幕回饋的語意不變。
+    // 自適應 EMA（見 SampleSmoother）：小幅擾動用 α=0.5 防抖，大幅變化（|raw−ema| ≥ 0.1）用 α=0.9
+    // 在 1-2 次取樣內追上。分級切換的「連續兩次確認」與遲滯不受影響。
     private readonly SampleSmoother smoother = new();
     private const int RampTickIntervalMs = 200;
 
-    // 實測發現的新問題：SharedReadOnly 長時間運作（本機約 7-8 分鐘、70 輪取樣後）偶爾會安靜卡住，
-    // 拿不到任何 frame，但相機本身、驅動都沒壞——用獨立探測工具馬上重開一個新的 MediaCapture 就正常。
-    // 這代表卡住的是這個 App 自己那個 MediaFrameReader 工作階段，不是裝置或系統層級的問題，
-    // 所以自動恢復的做法是重新建立 AmbientLightSensor（等於重開一個乾淨的相機工作階段），不用重啟整個 App。
+    // 連續 N 輪取不到 frame 時，重建 AmbientLightSensor（開一個乾淨的相機工作階段），不重啟整個 App。
+    // 針對「App 自己的 MediaFrameReader 工作階段卡住、獨立探測工具卻正常」這類情況（spike-report §13.3）。
     private const int ReconnectAfterConsecutiveFailures = 3;
 
     private readonly NotifyIcon trayIcon;
