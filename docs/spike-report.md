@@ -606,3 +606,24 @@ resolved_format    = 1280x720 @ 30/1 FPS / NV12
 - 這次 `resolved_format` 選了 720p 而非 640×480——切換共用模式的瞬間 `SupportedFormats` 被縮到剩一種（§5.2 記過同樣現象）。穩定後重開 App 應回到 VGA，未確認。
 - 第 3 層：C270 是全新 sensor、解析度也不同，亮度分級門檻幾乎確定已偏（見 issue #13），本資料點未評估分級準度。
 - 這次的失敗是 `0xC00D36B4`（session 作廢），不是 §17.4 講的 `0x80070020`（sharing violation）；既有的「連續 3 次 → 重連」已足以處理，SharingMode 自動退回維持不做。
+
+### 17.7 真機資料點 #2：重啟後 ExclusiveControl 靜默 0-frames，且重連未驗證 frame（2026-09-08，`camera-diagnostics.csv`）
+
+使用者重啟 App 後回報「抓不到相機」。事發當下 `config.json` 為 `SharingMode: "exclusive"`、`DeviceName: "USB Camera"`（Windows「相機共用」已由使用者開啟）。`camera-diagnostics.csv` 23:24–23:27：
+
+| 時間 | 狀況 |
+|---|---|
+| 23:24:58–23:25:43（≥60 秒） | 連續 `sample, False, no-frames`。`start_status=Success`、`initialize_ms≈25ms`、`frames_arrived=0`、無 error——**這正是 §12.1 記錄的 ExclusiveControl 靜默 0-frame pattern**（開得起來、reader 也 Start 成功、就是收不到 frame） |
+| 23:25:09 / 23:25:24 / 23:25:39 | 每 3 次失敗觸發 `reconnect`，三次都 `reconnect=True`（`PrepareAsync` 成功、格式協商到 1280×720 NV12）——**但緊接著的取樣仍然 0 frames**。重連「成功」了卻完全沒改善 |
+| 23:25:47 / 23:25:52 | `device-check, False`：`沒有列舉到任何視訊裝置`。C270 被 App 反覆搶奪（ExclusiveControl 下 init/reconnect 空轉）逼到整個掉出 USB bus 約 5 秒 |
+| 23:25:52.6 | `reconnect, False, InvalidOperationException (0x80131509)`（沒有裝置可連） |
+| 23:25:58 起 | 裝置重新列舉，`sample=True`、`frames_arrived=9`、`failed_step=none` 穩定 |
+
+總中斷約 **60 秒以上**。最終恢復是「C270 掉線 → 重新列舉」帶來的，不是重連邏輯本身修好的。
+
+**兩個問題**：
+
+1. **`SharingMode: exclusive` 是主因**。Test 10 / §12 早就定論：共存要用 `SharedReadOnly`（`shared`）+ 相機共用開啟；`ExclusiveControl` 在相機被 frame server（共用模式）中介時會安靜地收不到 frame。config 不知何時被改成 `exclusive`。**動作項**：設定改回 `shared`（`shared` 失敗時還會丟明確的 `0x80070020`，不像 `exclusive` 靜默卡住）。
+2. **`TryReconnectSensorAsync` 的判定有洞**：只確認 `PrepareAsync` 成功（裝置在、格式協商到），**沒確認實際收得到 frame**。所以這次它連報三次「重連成功」，實際上一個 frame 都沒有。重連應該要等到至少一個 frame 抵達才算數，否則就繼續下一輪重連或升級處理。→ issue #15。
+
+**§17 的 Layer 1／2 修正在這次事件中依然正確**（`device_match_note` 每次都走 `SoleDevice` 退路、格式協商正常），這次的失敗與裝置識別無關，是 SharingMode 設定 + 重連判定的問題。
