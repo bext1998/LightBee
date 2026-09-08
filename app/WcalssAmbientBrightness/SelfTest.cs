@@ -59,9 +59,11 @@ internal static class SelfTest
 
         Check("BrightnessMapper: 單次突波不會切換分級", () =>
         {
+            // 突波值取 0.15：已跨過「暗」的遲滯邊界（0.06 + 0.02），會進到「連續兩次確認」那道關卡，
+            // 單一離群值被擋下。（原本 12.x 節在舊門檻下實測看過 0.003 附近單筆跳到 0.076。）
             var mapper = CreateDefaultMapper();
             mapper.Evaluate(0.0005); // 暗
-            Assert(mapper.Evaluate(0.076) is null, "突波第一筆不應切換");
+            Assert(mapper.Evaluate(0.15) is null, "突波第一筆不應切換");
             Assert(mapper.Evaluate(0.0005) is null, "回到暗範圍不應有任何切換");
         });
 
@@ -143,7 +145,7 @@ internal static class SelfTest
         Check("SamplePacing: 靠近分級邊界但持平用慢間隔", () =>
         {
             var pacing = CreatePacing();
-            pacing.OnSample(success: true, raw: 0.012, smoothed: 0.012); // 距「暗」邊界 0.01 僅 0.002
+            pacing.OnSample(success: true, raw: 0.05, smoothed: 0.05); // 距「暗」邊界 0.06 僅 0.01，但持平
             Assert(pacing.NextIntervalMs() == 5000, $"interval={pacing.NextIntervalMs()}");
         });
 
@@ -157,7 +159,7 @@ internal static class SelfTest
         Check("SamplePacing: 穩定微光用慢間隔", () =>
         {
             var pacing = CreatePacing();
-            pacing.OnSample(success: true, raw: 0.022, smoothed: 0.022);
+            pacing.OnSample(success: true, raw: 0.15, smoothed: 0.15); // 微光段中段、遠離兩邊界
             Assert(pacing.NextIntervalMs() == 5000, $"interval={pacing.NextIntervalMs()}");
         });
 
@@ -356,7 +358,7 @@ internal static class SelfTest
 
     private static SamplePacing CreatePacing(int fastCyclesCapacity = 30) =>
         new(
-            boundaries: [0.01, 0.20],
+            boundaries: [0.06, 0.28], // 對齊 BrightnessMapper.DefaultBands（C270 暫定門檻，§17.8）
             slowIntervalMs: 5000,
             fastIntervalMs: 500,
             deltaThreshold: 0.03,

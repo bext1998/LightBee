@@ -2,9 +2,9 @@ namespace Wcalss.AmbientBrightness;
 
 /// <summary>
 /// 一個亮度分級區間。上界 (UpperBound) 為 exclusive；最後一段用 double.MaxValue 表示「以上」。
-/// 預設門檻取自 spike-report §5.1 / §6 的實測平均（暗 ~0.0005、微光自然光 ~0.022、有開燈 ~0.45–0.48）。
 /// 只做三段、不做連續調光：實測 normal/bright 兩段分不出來（見 spike-report §8）。
-/// 註：這些門檻是舊相機測的，換相機後需重新校正（issue #13）。
+/// 門檻為 C270 用 `--sensitivity-probe` 實測的**暫定值**（2026-09-09，自動曝光，spike-report §17.8）：
+/// 關螢幕關燈 ~0.02、微光 ~0.15、一般開燈 ~0.40–0.45。正式校正要鎖曝光重做（issue #13）。
 /// </summary>
 internal sealed class LuminanceBand
 {
@@ -42,9 +42,9 @@ internal sealed class BrightnessMapper
 
     public static IReadOnlyList<LuminanceBand> DefaultBands => new List<LuminanceBand>
     {
-        new() { Label = "暗（無光）", UpperBound = 0.01, TargetBrightnessPercent = 15, ValidatedBy = "Gate B / Test 06 dark（平均 0.000536）" },
-        new() { Label = "微光（僅自然光）", UpperBound = 0.20, TargetBrightnessPercent = 45, ValidatedBy = "Gate B / Test 06 §5.1 day-overcast（平均 0.022021）" },
-        new() { Label = "有開燈", UpperBound = double.MaxValue, TargetBrightnessPercent = 80, ValidatedBy = "Gate B / Test 06 normal/bright/very-bright（平均 0.45～0.48，三段測不出差異，故合併為一段）" },
+        new() { Label = "暗（無光）", UpperBound = 0.06, TargetBrightnessPercent = 15, ValidatedBy = "C270 --sensitivity-probe 2026-09-09（暫定，自動曝光；關螢幕關燈 ~0.02，含飄移餘裕）" },
+        new() { Label = "微光（僅自然光）", UpperBound = 0.28, TargetBrightnessPercent = 45, ValidatedBy = "C270 --sensitivity-probe 2026-09-09（暫定；微光/一盞 ~0.15，取在微光與開燈 ~0.40 之間）" },
+        new() { Label = "有開燈", UpperBound = double.MaxValue, TargetBrightnessPercent = 80, ValidatedBy = "C270 --sensitivity-probe 2026-09-09（暫定；一般開燈 settle 後 ~0.40–0.45，仍不細分 normal/bright，見 §8）" },
     };
 
     /// <summary>
