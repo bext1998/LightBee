@@ -41,6 +41,13 @@ dotnet run
 dotnet run -- --selftest
 ```
 
+其他 CLI 模式（都不進 WinForms 迴圈）：
+
+```powershell
+dotnet run -- --probe-metadata          # 一次性讀相機曝光／ISO 能力，並試鎖手動曝光
+dotnet run -- --sensitivity-probe 12     # 用產品的 Lazy 取樣路徑連跑 12 次，印 raw luminance 分布（換相機校正用，見 issue #13）
+```
+
 執行後不會有主視窗，請到系統匣找 WCALSS 圖示。雙擊圖示或右鍵「開啟設定…」可以看到：
 
 - **設定**分頁：裝置名稱、Sharing Mode、取樣間隔、遲滯區間、三段亮度分級與對應驗證來源。

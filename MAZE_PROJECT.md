@@ -18,7 +18,7 @@
 ## 自適應 Guidance
 
 - Default profile：minimal
-- Model overlay：gpt-5.6
+- Model overlay：不綁定特定模型（Codex、Claude Code 等皆可；由實際執行的 agent 依自身能力判斷）
 - Host capabilities：PowerShell、Git、GitHub CLI、Codex 子代理與平行工具
 - Profile escalation evidence：僅在具體失敗時記錄
 
