@@ -22,6 +22,3 @@ config.json
 .tmp-probe-server/
 *.crt
 *.key
-
-# Research proposals
-docs/proposals/engineering-mode-research-2026-09-05.md
