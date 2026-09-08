@@ -6,6 +6,7 @@ namespace Wcalss.AmbientBrightness;
 /// 1. 新邏輯：SampleSmoother（自適應 EMA）、SamplePacing（自適應取樣間隔）、LuminanceStability（取樣窗提前結束判定）
 /// 2. BrightnessMapper 既有行為的回歸測試：雙重確認、遲滯（含 12.4 節修過的負邊界 bug）、單次突波過濾
 /// 3. AsyncGuard：卡住的非同步工作逾時後不阻擋後續資源釋放（§13.3／§16 的釋放路徑加固）
+/// 4. CameraCompatibility：換相機時的裝置名稱比對與原生格式挑選（§17，不再假設特定型號／NV12）
 /// 全部通過回傳 0（exit code），任一失敗回傳 1 並列出失敗項目，可用於 CI 或接手 agent 的快速驗證。
 /// </summary>
 internal static class SelfTest
@@ -142,10 +143,31 @@ internal static class SelfTest
             Assert(pacing.NextIntervalMs() == 500, $"interval={pacing.NextIntervalMs()}");
         });
 
-        Check("SamplePacing: 逼近分級邊界觸發快間隔", () =>
+        Check("SamplePacing: 靠近分級邊界但持平用慢間隔", () =>
         {
             var pacing = CreatePacing();
             pacing.OnSample(success: true, raw: 0.012, smoothed: 0.012); // 距「暗」邊界 0.01 僅 0.002
+            Assert(pacing.NextIntervalMs() == 5000, $"interval={pacing.NextIntervalMs()}");
+        });
+
+        Check("SamplePacing: 穩定關燈用慢間隔", () =>
+        {
+            var pacing = CreatePacing();
+            pacing.OnSample(success: true, raw: 0.0005, smoothed: 0.0005);
+            Assert(pacing.NextIntervalMs() == 5000, $"interval={pacing.NextIntervalMs()}");
+        });
+
+        Check("SamplePacing: 穩定微光用慢間隔", () =>
+        {
+            var pacing = CreatePacing();
+            pacing.OnSample(success: true, raw: 0.022, smoothed: 0.022);
+            Assert(pacing.NextIntervalMs() == 5000, $"interval={pacing.NextIntervalMs()}");
+        });
+
+        Check("SamplePacing: 從關燈往微光移動觸發快間隔", () =>
+        {
+            var pacing = CreatePacing();
+            pacing.OnSample(success: true, raw: 0.022, smoothed: 0.005);
             Assert(pacing.NextIntervalMs() == 500, $"interval={pacing.NextIntervalMs()}");
         });
 
@@ -199,6 +221,104 @@ internal static class SelfTest
         {
             double[] values = [0.40, 0.44, 0.45, 0.46, 0.46, 0.46];
             Assert(!LuminanceStability.IsStable(values, minimumCount: 6, tolerance: 0.01));
+        });
+
+        // ── CameraCompatibility：換相機時的裝置比對與原生格式挑選（§17）──
+
+        Check("ResolveDevice: 完全同名（大小寫不敏感）優先", () =>
+        {
+            var match = CameraCompatibility.ResolveDevice(["Integrated Camera", "USB Camera"], "usb camera");
+            Assert(match.Found && match.Index == 1 && match.Kind == CameraCompatibility.DeviceMatchKind.ExactName, match.Note);
+        });
+
+        Check("ResolveDevice: 同名找不到但唯一部分符合就採用", () =>
+        {
+            var match = CameraCompatibility.ResolveDevice(["Integrated Camera", "HD Pro Webcam C920"], "C920");
+            Assert(match.Found && match.Index == 1 && match.Kind == CameraCompatibility.DeviceMatchKind.UniquePartialName, match.Note);
+        });
+
+        Check("ResolveDevice: 部分符合有多筆時不猜（落到下一層）", () =>
+        {
+            // 兩台都含 "Camera"，設定 "Camera" → 部分符合不唯一；又有多台 → NotFound。
+            var match = CameraCompatibility.ResolveDevice(["USB Camera", "Integrated Camera"], "Camera");
+            Assert(!match.Found && match.Kind == CameraCompatibility.DeviceMatchKind.None, match.Note);
+        });
+
+        Check("ResolveDevice: 設定對不上但只列舉到一台就改用那台", () =>
+        {
+            var match = CameraCompatibility.ResolveDevice(["Some New Webcam 4K"], "USB Camera");
+            Assert(match.Found && match.Index == 0 && match.Kind == CameraCompatibility.DeviceMatchKind.SoleDevice, match.Note);
+        });
+
+        Check("ResolveDevice: 未設定名稱 + 只有一台 → 採用該台", () =>
+        {
+            var match = CameraCompatibility.ResolveDevice(["Some New Webcam 4K"], "");
+            Assert(match.Found && match.Index == 0 && match.Kind == CameraCompatibility.DeviceMatchKind.SoleDevice, match.Note);
+        });
+
+        Check("ResolveDevice: 完全沒有裝置 → NotFound", () =>
+        {
+            var match = CameraCompatibility.ResolveDevice([], "USB Camera");
+            Assert(!match.Found && match.Kind == CameraCompatibility.DeviceMatchKind.None, match.Note);
+        });
+
+        Check("ResolveDevice: 多台且都對不上 → NotFound（不亂猜）", () =>
+        {
+            var match = CameraCompatibility.ResolveDevice(["Cam A", "Cam B"], "USB Camera");
+            Assert(!match.Found && match.Kind == CameraCompatibility.DeviceMatchKind.None, match.Note);
+        });
+
+        Check("SelectFormatIndex: 有 NV12 640x480/30 就選它", () =>
+        {
+            var formats = new List<CameraCompatibility.FormatCandidate>
+            {
+                new(1920, 1080, "NV12", 30),
+                new(640, 480, "MJPG", 30),
+                new(640, 480, "NV12", 30),
+                new(640, 480, "NV12", 15),
+            };
+            Assert(CameraCompatibility.SelectFormatIndex(formats) == 2, "應選 index 2");
+        });
+
+        Check("SelectFormatIndex: 沒有 NV12 時選 YUY2，不選 MJPG", () =>
+        {
+            var formats = new List<CameraCompatibility.FormatCandidate>
+            {
+                new(640, 480, "MJPG", 30),
+                new(640, 480, "YUY2", 30),
+            };
+            Assert(CameraCompatibility.SelectFormatIndex(formats) == 1, "應選 YUY2");
+        });
+
+        Check("SelectFormatIndex: 只有 MJPG 也要選出來（不再 throw）", () =>
+        {
+            var formats = new List<CameraCompatibility.FormatCandidate>
+            {
+                new(1280, 720, "MJPG", 30),
+                new(640, 480, "MJPG", 30),
+            };
+            Assert(CameraCompatibility.SelectFormatIndex(formats) == 1, "應選接近 VGA 的 MJPG");
+        });
+
+        Check("SelectFormatIndex: 同格式時挑最接近 640x480 的解析度", () =>
+        {
+            var formats = new List<CameraCompatibility.FormatCandidate>
+            {
+                new(160, 120, "NV12", 30),
+                new(800, 600, "NV12", 30),
+                new(1920, 1080, "NV12", 30),
+            };
+            Assert(CameraCompatibility.SelectFormatIndex(formats) == 1, "800x600 面積差最小");
+        });
+
+        Check("SelectFormatIndex: 略過寬或高為 0 的格式；全無效回傳 -1", () =>
+        {
+            var formats = new List<CameraCompatibility.FormatCandidate>
+            {
+                new(0, 0, "NV12", 30),
+                new(640, 0, "NV12", 30),
+            };
+            Assert(CameraCompatibility.SelectFormatIndex(formats) == -1, "沒有有效格式");
         });
 
         // ── AsyncGuard（釋放路徑不被卡住的 StopAsync 阻擋，對應 §13.3／§16 修復）──

@@ -522,3 +522,51 @@ dotnet run -- --selftest
 | 相機在**啟動時／設定變更 re-init 時**不在 | `TrayContext.InitializeAsync` 的 `PrepareAsync` 拋例外 → `sensorReady=false` → **`sampleTimer` 從未 `Start()`** → `SampleOnceAsync` 因 `!sensorReady` 永遠 early-return → 沒有任何東西在輪詢 → 之後插回 USB 也不會被發現，App 卡死直到手動重啟 |
 
 **修法方向（下班後處理，尚未實作）**：`InitializeAsync` 失敗時不要就停住——起一個慢速重試（例如每 15–30 秒再跑一次 `PrepareAsync`，成功才 `sensorReady=true` 並 `sampleTimer.Start()`），或乾脆一律 `Start()` 讓 `SampleOnceAsync` 在 `sensor is not null && !sensorReady` 時自行嘗試 `PrepareAsync`。重試也要沿用 §16.6 的「裝置不在就只列舉、不戳 MF」原則，避免對 MF 高頻 thrash。`--selftest` 不涵蓋，需真機驗（拔 USB 啟動 App → 插回 → 應在一個重試週期內自動恢復）。
+
+## 17. 換相機相容性：不再假設特定型號／NV12（2026-09-08）
+
+### 17.1 觸發：買了新視訊鏡頭，實驗程式抓不到
+
+第 2 節之後所有相機邏輯都是針對那顆 **JINPEI 錦沛 1080p**（Windows 列舉名稱為 `USB Camera`，Product ID 4A55）寫死的。使用者換了一顆新鏡頭，`app/WcalssAmbientBrightness` 直接初始化失敗。讀碼確認缺口有三層，換相機會逐層踩：
+
+| 層 | 現行寫死點 | 換相機的後果 |
+|---|---|---|
+| 1 裝置識別 | `AmbientLightSensor.PrepareAsync` / `CameraMetadataProbe` 都是 `string.Equals(d.Name, config.DeviceName)` 完全比對；`config.DeviceName` 預設 `"USB Camera"`；Settings 是純文字框 | 新鏡頭列舉名稱不同 → `找不到視訊裝置：USB Camera` 硬失敗，使用者也無從得知該填什麼 |
+| 2 能力協商 | `SelectFormat` 兩條路徑都 `.Where(Subtype == "NV12")`，最後 `?? throw`；`ReadNv12MeanLuminance` 也硬性要求 NV12 SoftwareBitmap | 只提供 YUY2／MJPG 的相機（便宜 UVC 常見）→ 選不到格式，或選到但每個 frame 解析都丟例外（被 `catch {}` 吞掉，只看到誤導的「沒有 frame 抵達」） |
+| 3 光度校正 | 亮度分級 `LuminanceBand` 是用 §6/§8 那台相機 + 那個房間測出來的（`ValidatedBy`）；§17（原）已載明扣除螢幕自身亮度「超出本輪範圍」 | 不同 sensor 的 gain／曝光曲線不同 → 同樣照度得到不同 raw luminance，分級門檻靜默偏掉，**不會報錯** |
+
+### 17.2 這次做了什麼（第 1、2 層）
+
+程式碼修改，全部可用 `--selftest` 驗證，**尚未在新相機上跑過**：
+
+- **新增 `CameraCompatibility.cs`**（純邏輯、不碰 WinRT）：
+  - `ResolveDevice(names, configuredName)`：完全同名（大小寫不敏感）→ 唯一部分符合（互為子字串）→ 只列舉到一台就採用 → 都不成立回 `NotFound` 並附原因。多台且比對不唯一時**不猜**。
+  - `SelectFormatIndex(formats)`：不再要求 NV12。排序鍵＝子類型優先序（NV12 &gt; YUY2 &gt; 其他未壓縮 &gt; MJPG）→ 解析度接近 640×480 → fps 接近 30。只有全部無效才回 -1。這改掉了原本「fallback 選最高解析度 NV12」的行為，改成「選最接近 VGA」（§5.2 曾被迫用 1080p 也能跑，VGA 對 mean luminance 綽綽有餘且 CPU／頻寬更低）。
+- **`AmbientLightSensor.cs`**：
+  - `PrepareAsync` / `CheckTargetDevicePresenceAsync` 改用 `ResolveDevice`（兩邊同一套規則）。
+  - `SelectFormat` 改走 `CameraCompatibility.SelectFormatIndex`，`CameraMetadataProbe` 共用同一份（消掉原本兩份一模一樣的壞邏輯）。
+  - `CreateFrameReaderAsync` 從「用原生 subtype」改成**一律請求 NV12 輸出**（`MediaEncodingSubtypes.Nv12`）——原生格式照 `SetFormatAsync` 協商，讓 Media Foundation 在 reader 輸出端統一轉成 NV12，下游 `ReadNv12MeanLuminance` 的 Y 平面解析完全不動。NV12 是最普遍支援的轉換目標。
+  - `OnFrameArrived` 現在會留下第一筆 frame 解析錯誤（`frameError`），`no-frames` 失敗時優先回報它——避免「原生格式轉不成 NV12」被誤報成「相機沒出 frame」。
+- **`CameraDiagnosticsLog.cs`**：`PrepareDiagnostics` 加 `DeviceMatchNote`，CSV 多一欄 `device_match_note`（記「怎麼比對到的」或對不上的原因）。
+- **`SettingsForm.cs`**：裝置欄 `TextBox` → 可編輯 `ComboBox`，非同步列出實際列舉到的視訊裝置；留空＝自動採用唯一裝置。列舉失敗（權限／無裝置）靜默保留手動輸入。
+
+自檢：`--selftest` 37/37 通過（新增 13 項涵蓋 `ResolveDevice` 7 種情境、`SelectFormatIndex` 6 種情境）。
+
+### 17.3 尚未驗證（誠實記錄）
+
+- 新鏡頭實際列舉出來的**名稱**、支援的**格式清單**、以及 **MF 能否把它的原生格式轉成 NV12**——都要真機才知道。
+- `SettingsForm` 的 ComboBox 在真機上是否正確帶出裝置清單。
+- 若新鏡頭只有 MJPG：轉 NV12 是整張 JPEG 解碼，CPU 成本在 1–2fps 取樣下應可忽略，但沒實測過。
+
+### 17.4 暫不處理（等真機證據再決定）
+
+- **第 3 層 光度校正**：換相機後分級門檻會偏。這是 per-sensor 的物理問題，不是識別 bug。需要一次性校正步驟或 per-device profile，本次不碰。
+- **SharingMode 自動退回**（`0x80070020`）：§12.1 只在「Windows Camera Sharing 系統設定關閉」時見過，不是 per-camera 行為，先不加投機性 fallback。
+- `camera-diagnostics.csv` 加欄後，舊 CSV 的歷史列會少一欄（header 只在檔案不存在時寫）。這是開發診斷檔，可直接刪掉重生，不特別處理。
+
+### 17.5 下一步：真機試跑要回填的資料
+
+1. `WCALSS.AmbientBrightness.exe --probe-metadata`：記下 `Device:`、`Source:`（實際選中的解析度／subtype）、`FrameReady`、Exposure／ISO 三行。比對失敗時錯誤訊息會印出列舉到的所有裝置名稱。
+2. 正常啟動跑幾輪，看 `camera-diagnostics.csv` 的 `device_match_note`（確認是用哪一層比對到的）、`resolved_format`、`frames_arrived`、`failed_step`。
+3. 若 `failed_step=no-frames` 且 `detail` 是「frame 解析失敗…」→ 就是 MF 對這顆相機的原生格式不支援轉 NV12，需要在 §17 回填並改走「泛用 luminance 讀取（多 `BitmapPixelFormat`）」。
+4. 分級是否明顯偏掉（例如開燈卻判「暗」）→ 第 3 層校正要提前排。

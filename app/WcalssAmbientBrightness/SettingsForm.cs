@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
+using Windows.Devices.Enumeration;
 
 namespace Wcalss.AmbientBrightness;
 
@@ -16,7 +17,7 @@ internal sealed class SettingsForm : Form
     private readonly BrightnessMapper mapperForPreview;
     private readonly Action<bool> onSaved;
 
-    private TextBox deviceNameBox = null!;
+    private ComboBox deviceNameBox = null!;
     private ComboBox sharingModeCombo = null!;
     private NumericUpDown intervalUpDown = null!;
     private NumericUpDown hysteresisUpDown = null!;
@@ -78,7 +79,10 @@ internal sealed class SettingsForm : Form
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        deviceNameBox = new TextBox { Text = config.DeviceName, Width = 260 };
+        // §17：可編輯的下拉——列出實際列舉到的視訊裝置，換相機時直接挑；
+        // 仍可手動輸入目前沒接上的裝置名稱保留設定。留空 = 自動採用唯一的視訊裝置。
+        deviceNameBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown, Width = 260, Text = config.DeviceName };
+        _ = PopulateVideoDevicesAsync();
         sharingModeCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 260 };
         sharingModeCombo.Items.AddRange(new object[] { "shared", "exclusive" });
         sharingModeCombo.SelectedItem = config.SharingMode;
@@ -87,7 +91,7 @@ internal sealed class SettingsForm : Form
         hysteresisUpDown = new NumericUpDown { Minimum = 0, Maximum = 1, Increment = 0.005m, DecimalPlaces = 3, Width = 260, Value = (decimal)config.HysteresisMargin };
         autoAdjustCheck = new CheckBox { Text = "啟用自動調整螢幕亮度", Checked = config.AutoAdjustEnabled, AutoSize = true };
 
-        AddRow(layout, "相機裝置名稱", deviceNameBox);
+        AddRow(layout, "相機裝置名稱", deviceNameBox, "從清單挑實際接上的相機；留空則自動採用唯一的視訊裝置。完全同名找不到時，會退而用唯一部分符合或「只有一台就採用」（§17）。");
         AddRow(layout, "Sharing Mode", sharingModeCombo, "Test 10 實測：shared（SharedReadOnly）起始讀數比 exclusive 穩定，建議維持 shared。");
         AddRow(layout, "取樣間隔 (ms)", intervalUpDown, "週期性 Lazy 取樣，對應 Test 08 驗證過的長時間穩定模式，不常駐佔用相機。");
         AddRow(layout, "遲滯區間", hysteresisUpDown, "讀數在分級邊界附近時避免反覆切換亮度的緩衝量。");
@@ -176,7 +180,7 @@ internal sealed class SettingsForm : Form
             ReadOnly = true,
             RowHeadersVisible = false
         };
-        logGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "時間 (UTC)", DataPropertyName = "TimestampUtc", Width = 150 });
+        logGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "時間", DataPropertyName = "Timestamp", Width = 150 });
         logGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "成功", DataPropertyName = "SampleSucceeded", Width = 50 });
         logGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "平均亮度", DataPropertyName = "MeanLuminance", Width = 80 });
         logGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "分級", DataPropertyName = "BandLabel", Width = 110 });
@@ -190,6 +194,38 @@ internal sealed class SettingsForm : Form
 
         page.Controls.Add(layout);
         return page;
+    }
+
+    /// <summary>
+    /// §17：非同步列舉視訊裝置塞進下拉；失敗（權限、無裝置）就靜默保留手動輸入的值，不擋設定視窗。
+    /// 建構子在 UI 執行緒呼叫，await 之後仍回到 UI 執行緒，直接動 ComboBox 安全。
+    /// </summary>
+    private async Task PopulateVideoDevicesAsync()
+    {
+        List<string> names;
+        try
+        {
+            var devices = await DeviceInformation.FindAllAsync(DeviceClass.VideoCapture);
+            names = devices.Select(d => d.Name).Distinct().ToList();
+        }
+        catch
+        {
+            return;
+        }
+
+        if (deviceNameBox.IsDisposed)
+        {
+            return;
+        }
+
+        var typed = deviceNameBox.Text;
+        deviceNameBox.BeginUpdate();
+        deviceNameBox.Items.Clear();
+        deviceNameBox.Items.AddRange(names.Cast<object>().ToArray());
+        deviceNameBox.EndUpdate();
+        // 還原使用者原本的值：命中清單就選起來，否則保留為自由輸入文字。
+        var hit = names.FirstOrDefault(n => string.Equals(n, typed, StringComparison.OrdinalIgnoreCase));
+        deviceNameBox.Text = hit ?? typed;
     }
 
     private static void AddRow(TableLayoutPanel layout, string label, Control control, string? helpText = null)
@@ -253,7 +289,7 @@ internal sealed class SettingsForm : Form
         brightnessController.Probe();
         var current = brightnessController.CurrentBrightnessPercent;
         currentReadingLabel.Text = validationLog.RecentEntries.LastOrDefault(e => e.SampleSucceeded) is { } last
-            ? $"最近一次讀數：{last.MeanLuminance:F4}（{last.BandLabel}），時間 {last.TimestampUtc.ToLocalTime():T}"
+            ? $"最近一次讀數：{last.MeanLuminance:F4}（{last.BandLabel}），時間 {last.Timestamp:T}"
             : "尚無取樣紀錄。";
 
         brightnessAvailabilityLabel.Text = brightnessController.IsAvailable

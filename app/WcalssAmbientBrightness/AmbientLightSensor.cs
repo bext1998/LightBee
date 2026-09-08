@@ -46,13 +46,20 @@ internal sealed class AmbientLightSensor : IDisposable
         var enumerated = await DeviceInformation.FindAllAsync(DeviceClass.VideoCapture);
         var enumerationMs = stopwatch.ElapsedMilliseconds;
         var names = enumerated.Select(d => d.Name).ToList();
-        var match = enumerated.FirstOrDefault(d => string.Equals(d.Name, deviceName, StringComparison.OrdinalIgnoreCase));
+        // §17：不再只認寫死的裝置名稱——完全同名找不到時，退而用唯一部分符合或「只有一台就採用」，
+        // 讓換相機不必先改設定就能跑起來。
+        var match = CameraCompatibility.ResolveDevice(names, deviceName);
 
         stopwatch.Restart();
         try
         {
-            device = match ?? throw new InvalidOperationException(
-                $"找不到視訊裝置：{deviceName}。目前列舉到：{string.Join(", ", names)}");
+            if (!match.Found)
+            {
+                throw new InvalidOperationException(
+                    $"找不到視訊裝置：{deviceName}。{match.Note}");
+            }
+
+            device = enumerated[match.Index];
             sourceSelection = await FindColorSourceAsync(device.Id, sharingMode);
         }
         finally
@@ -63,7 +70,8 @@ internal sealed class AmbientLightSensor : IDisposable
             {
                 DeviceEnumerationMs = enumerationMs,
                 EnumeratedDevices = names,
-                TargetDeviceFound = match is not null,
+                TargetDeviceFound = match.Found,
+                DeviceMatchNote = match.Note,
                 SourceNegotiationMs = stopwatch.ElapsedMilliseconds,
                 ResolvedFormat = sourceSelection is null ? "" : ResolvedFormatDescription,
             };
@@ -83,11 +91,14 @@ internal sealed class AmbientLightSensor : IDisposable
         var stopwatch = Stopwatch.StartNew();
         var enumerated = await DeviceInformation.FindAllAsync(DeviceClass.VideoCapture);
         var names = enumerated.Select(d => d.Name).ToList();
+        // 與 PrepareAsync 用同一套比對規則，兩邊對「裝置還在不在」的判斷才會一致。
+        var match = CameraCompatibility.ResolveDevice(names, deviceName);
         return new PrepareDiagnostics
         {
             DeviceEnumerationMs = stopwatch.ElapsedMilliseconds,
             EnumeratedDevices = names,
-            TargetDeviceFound = names.Any(n => string.Equals(n, deviceName, StringComparison.OrdinalIgnoreCase)),
+            TargetDeviceFound = match.Found,
+            DeviceMatchNote = match.Note,
             SourceNegotiationMs = 0,
             ResolvedFormat = "",
         };
@@ -121,6 +132,7 @@ internal sealed class AmbientLightSensor : IDisposable
         var stopAsyncTimedOut = false;
         var failedStep = "none";
         string? failureDetail = null;
+        string? frameError = null;
 
         void OnFrameArrived(MediaFrameReader sender, MediaFrameArrivedEventArgs args)
         {
@@ -139,9 +151,15 @@ internal sealed class AmbientLightSensor : IDisposable
                     samples.Add((DateTimeOffset.UtcNow, mean));
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // 單一 frame 讀取失敗不影響整體取樣，忽略即可（與原 FrameCollector 行為一致）。
+                // 單一 frame 讀取失敗不影響整體取樣（與原 FrameCollector 行為一致），
+                // 但要留下第一筆錯誤：§17 之後若某相機的原生格式無法轉成 NV12，
+                // 症狀會是「一個 frame 都用不了」，沒有這個就只會看到誤導性的「沒有 frame 抵達」。
+                lock (gate)
+                {
+                    frameError ??= $"frame 解析失敗：{ex.GetType().Name} (0x{ex.HResult:X8}): {(string.IsNullOrWhiteSpace(ex.Message) ? "(無訊息文字)" : ex.Message)}";
+                }
             }
         }
 
@@ -162,7 +180,9 @@ internal sealed class AmbientLightSensor : IDisposable
 
             var source = mediaCapture.FrameSources[sourceSelection.Info.Id];
             await source.SetFormatAsync(sourceSelection.Format);
-            reader = await mediaCapture.CreateFrameReaderAsync(source, sourceSelection.Format.Subtype);
+            // §17：原生格式照 sourceSelection.Format 協商，但一律要求 MediaFrameReader 以 NV12 輸出，
+            // 下游 ReadNv12MeanLuminance 的 Y 平面解析維持不變（NV12 是最普遍支援的轉換目標）。
+            reader = await mediaCapture.CreateFrameReaderAsync(source, MediaEncodingSubtypes.Nv12);
             reader.FrameArrived += OnFrameArrived;
 
             var status = await reader.StartAsync();
@@ -266,7 +286,8 @@ internal sealed class AmbientLightSensor : IDisposable
             if (usable.Count == 0)
             {
                 failedStep = "no-frames";
-                failureDetail = "取樣期間沒有任何 frame 抵達（安靜失敗，對應 Test 10 觀察到的情況：Camera Sharing 關閉時 FrameArrived 不會觸發）。";
+                failureDetail = frameError
+                    ?? "取樣期間沒有任何 frame 抵達（安靜失敗，對應 Test 10 觀察到的情況：Camera Sharing 關閉時 FrameArrived 不會觸發）。";
             }
             else
             {
@@ -327,33 +348,32 @@ internal sealed class AmbientLightSensor : IDisposable
         }
     }
 
-    private static MediaFrameFormat SelectFormat(MediaFrameSource source)
+    /// <summary>
+    /// §17：不再限定 NV12。挑「原生擷取格式」交給 <see cref="CameraCompatibility.SelectFormatIndex"/>
+    /// （NV12 &gt; YUY2 &gt; 其他未壓縮 &gt; MJPG，再優先接近 640x480/30fps），
+    /// 影像在 <see cref="MediaFrameReader"/> 輸出端統一轉成 NV12。
+    /// </summary>
+    internal static MediaFrameFormat SelectFormat(MediaFrameSource source)
     {
-        var preferred = source.SupportedFormats
+        var formats = source.SupportedFormats
             .Where(candidate => candidate.VideoFormat is not null)
-            .Where(candidate => candidate.VideoFormat.Width == 640 && candidate.VideoFormat.Height == 480)
-            .Where(candidate => string.Equals(candidate.Subtype, "NV12", StringComparison.OrdinalIgnoreCase))
-            .Where(candidate => IsThirtyFps(candidate.FrameRate))
-            .FirstOrDefault();
+            .ToList();
 
-        if (preferred is not null)
-        {
-            return preferred;
-        }
+        var candidates = formats
+            .Select(candidate => new CameraCompatibility.FormatCandidate(
+                (int)candidate.VideoFormat.Width,
+                (int)candidate.VideoFormat.Height,
+                candidate.Subtype,
+                candidate.FrameRate.Denominator != 0
+                    ? (double)candidate.FrameRate.Numerator / candidate.FrameRate.Denominator
+                    : 0))
+            .ToList();
 
-        // Test 10 實測：Camera Sharing 開啟、已有其他 App 協商走某格式時，
-        // SupportedFormats 可能只剩對方在用的單一格式，因此退而求其次選最高解析度的 NV12。
-        var fallback = source.SupportedFormats
-            .Where(candidate => candidate.VideoFormat is not null)
-            .Where(candidate => string.Equals(candidate.Subtype, "NV12", StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(candidate => candidate.VideoFormat.Width * candidate.VideoFormat.Height)
-            .FirstOrDefault();
-
-        return fallback ?? throw new InvalidOperationException("目標 color MediaFrameSource 沒有任何 NV12 格式可用。");
+        var index = CameraCompatibility.SelectFormatIndex(candidates);
+        return index >= 0
+            ? formats[index]
+            : throw new InvalidOperationException("目標 color MediaFrameSource 沒有任何可用的視訊格式。");
     }
-
-    private static bool IsThirtyFps(MediaRatio rate) =>
-        rate.Denominator != 0 && Math.Abs((double)rate.Numerator / rate.Denominator - 30.0) < 0.01;
 
     private static double ReadNv12MeanLuminance(SoftwareBitmap bitmap)
     {

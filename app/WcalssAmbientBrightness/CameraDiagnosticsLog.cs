@@ -27,6 +27,9 @@ internal sealed record PrepareDiagnostics
     public long DeviceEnumerationMs { get; init; }
     public IReadOnlyList<string> EnumeratedDevices { get; init; } = Array.Empty<string>();
     public bool TargetDeviceFound { get; init; }
+
+    /// <summary>§17：目標裝置是「怎麼」比對到的（完全同名／唯一部分符合／只有一台就採用），或對不上的原因。</summary>
+    public string DeviceMatchNote { get; init; } = "";
     public long SourceNegotiationMs { get; init; }
     public string ResolvedFormat { get; init; } = "";
 }
@@ -41,9 +44,9 @@ internal sealed record PrepareDiagnostics
 internal sealed class CameraDiagnosticsLog
 {
     private const string Header =
-        "timestamp_utc,phase,success,detail,initialize_ms,start_status,frames_arrived,sample_window_ms," +
+        "timestamp_local,phase,success,detail,initialize_ms,start_status,frames_arrived,sample_window_ms," +
         "stop_async_ms,stop_async_timed_out,reader_dispose_ms,media_capture_dispose_ms,failed_step," +
-        "device_enum_ms,enumerated_devices,target_device_found,source_negotiation_ms,resolved_format";
+        "device_enum_ms,enumerated_devices,target_device_found,device_match_note,source_negotiation_ms,resolved_format";
 
     private readonly string path;
     private readonly object gate = new();
@@ -65,7 +68,7 @@ internal sealed class CameraDiagnosticsLog
     public void Append(string phase, bool success, string? detail, SampleDiagnostics? sample = null, PrepareDiagnostics? prepare = null)
     {
         var line = string.Join(",",
-            DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+            DateTimeOffset.Now.ToString("O", CultureInfo.InvariantCulture),
             phase,
             success,
             Escape(detail),
@@ -81,6 +84,7 @@ internal sealed class CameraDiagnosticsLog
             Num(prepare?.DeviceEnumerationMs),
             Escape(prepare is null ? null : string.Join(" | ", prepare.EnumeratedDevices)),
             Flag(prepare?.TargetDeviceFound),
+            Escape(prepare?.DeviceMatchNote),
             Num(prepare?.SourceNegotiationMs),
             Escape(prepare?.ResolvedFormat));
 
