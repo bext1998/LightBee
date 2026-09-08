@@ -60,7 +60,7 @@ internal static class CameraMetadataProbe
             readerStarted = true;
             var frameReady = await Task.WhenAny(firstFrameArrived.Task, Task.Delay(TimeSpan.FromSeconds(1))) == firstFrameArrived.Task;
             output.WriteLine($"FrameReady: {frameReady}");
-            WriteMetadata(output, mediaCapture.VideoDeviceController);
+            await WriteMetadataAsync(output, mediaCapture.VideoDeviceController);
             return 0;
         }
         catch (Exception ex)
@@ -92,12 +92,27 @@ internal static class CameraMetadataProbe
         }
     }
 
-    private static void WriteMetadata(TextWriter output, VideoDeviceController controller)
+    private static async Task WriteMetadataAsync(TextWriter output, VideoDeviceController controller)
     {
         var exposure = controller.ExposureControl;
         output.WriteLine(exposure.Supported
             ? $"ExposureControl: available; Auto={exposure.Auto}; Value={exposure.Value.TotalMilliseconds:F3} ms; Range={exposure.Min.TotalMilliseconds:F3}..{exposure.Max.TotalMilliseconds:F3} ms; Step={exposure.Step.TotalMilliseconds:F3} ms"
             : "ExposureControl: unavailable (driver does not provide exposure-time metadata)");
+
+        // 校正策略取決於能不能鎖手動曝光（issue #13 §3）：實際試一次 SetAuto(false)，再還原。
+        if (exposure.Supported)
+        {
+            try
+            {
+                await exposure.SetAutoAsync(false);
+                output.WriteLine($"  ExposureControl.SetAuto(false): OK; Auto now={exposure.Auto}; Value={exposure.Value.TotalMilliseconds:F3} ms");
+                await exposure.SetAutoAsync(true);
+            }
+            catch (Exception ex)
+            {
+                output.WriteLine($"  ExposureControl.SetAuto(false): 失敗 {ex.GetType().Name} (0x{ex.HResult:X8})");
+            }
+        }
 
         var legacyExposure = controller.Exposure;
         var hasLegacyExposure = legacyExposure.TryGetValue(out var legacyExposureValue);
@@ -105,6 +120,13 @@ internal static class CameraMetadataProbe
         output.WriteLine(hasLegacyExposure
             ? $"Exposure (legacy): available; Value={legacyExposureValue}; Auto={(hasLegacyAuto ? legacyExposureAuto : "unknown")}; unit is driver-defined"
             : "Exposure (legacy): unavailable or unreadable");
+
+        if (hasLegacyExposure)
+        {
+            var lockedManual = legacyExposure.TrySetAuto(false);
+            output.WriteLine($"  Exposure(legacy).TrySetAuto(false): {(lockedManual ? "OK" : "拒絕")}");
+            legacyExposure.TrySetAuto(true);
+        }
 
         var iso = controller.IsoSpeedControl;
         output.WriteLine(iso.Supported
