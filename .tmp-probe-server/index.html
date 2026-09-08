@@ -151,6 +151,8 @@ th{font-family:var(--pd-font-mono); font-size:11px; letter-spacing:.04em; text-t
 td{font-family:var(--pd-font-mono); font-variant-numeric:tabular-nums;}
 td.cond{font-family:var(--pd-font-sans);}
 tr:last-child td{border-bottom:none;}
+tr[data-quality="high-variance"]{background:color-mix(in srgb,var(--pd-color-warning) 8%,transparent);}
+.flag{color:var(--pd-color-warning); font-family:var(--pd-font-sans); margin-left:4px; cursor:help;}
 .row-del{
   background:none; border:none; color:var(--pd-color-text-secondary);
   font-size:16px; line-height:1; padding:var(--pd-space-1); min-height:0; width:auto; cursor:pointer;
@@ -237,7 +239,8 @@ pre{
       <option value="戶外・黃昏"></option>
       <option value="戶外・複雜光源變化（移動中）"></option>
     </datalist>
-    <p class="hint">按下後保持相機不動約 4 秒，會連續讀約 24 幀。</p>
+    <p class="callout warn" id="outdoorHint" hidden>戶外光照建議先開「鎖定曝光」，否則讀值容易頂到上限、AE 一直追，資料會偏且變異大。</p>
+    <p class="hint">按下後保持相機不動約 4 秒，會連續讀約 24 幀。單次 range &gt; 0.05 會標記為「變異大」（可能是混合光照）。</p>
     <button class="btn-primary" id="sampleBtn">採集 24 幀</button>
   </section>
 
@@ -248,7 +251,7 @@ pre{
       <p class="empty" id="emptyState">還沒有資料。先開相機、輸入條件標籤、按採集。</p>
       <table id="dataTable" hidden>
         <thead>
-          <tr><th>條件</th><th>n</th><th>mean</th><th>min</th><th>max</th><th>σ</th><th>曝光</th><th aria-label="刪除"></th></tr>
+          <tr><th>條件</th><th>n</th><th>mean</th><th>min</th><th>max</th><th>σ / range</th><th>曝光</th><th aria-label="刪除"></th></tr>
         </thead>
         <tbody id="dataBody"></tbody>
       </table>
@@ -275,6 +278,7 @@ const els = {
   readout:$('readout'), liveVal:$('liveVal'), lockWrap:$('lockWrap'), lockChk:$('lockChk'),
   exposureState:$('exposureState'), startBtn:$('startBtn'), stopBtn:$('stopBtn'),
   capturePanel:$('capturePanel'), condInput:$('condInput'), sampleBtn:$('sampleBtn'),
+  outdoorHint:$('outdoorHint'),
   emptyState:$('emptyState'), dataTable:$('dataTable'), dataBody:$('dataBody'),
   exportPanel:$('exportPanel'), copyJsonBtn:$('copyJsonBtn'), copyCsvBtn:$('copyCsvBtn'),
   jsonPreview:$('jsonPreview'), copyHint:$('copyHint'),
@@ -282,6 +286,7 @@ const els = {
 
 const CAP_W = 160, CAP_H = 120;         // 縮圖尺寸：算平均亮度夠用、快
 const FRAMES = 24, FRAME_GAP_MS = 160;  // 約 4 秒
+const HIGH_VARIANCE_RANGE = 0.05;       // 單次採集 max-min 超過此值 → 標記「變異大」（可能混合光照）
 const canvas = document.createElement('canvas');
 canvas.width = CAP_W; canvas.height = CAP_H;
 const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -316,6 +321,12 @@ function startLive(){
   }, 250);
 }
 function stopLive(){ if (liveTimer){ clearInterval(liveTimer); liveTimer = null; } }
+
+/** 條件標籤是「戶外…」且沒鎖曝光時，提示先開鎖定曝光。 */
+function refreshOutdoorHint(){
+  const outdoor = els.condInput.value.trim().startsWith('戶外');
+  els.outdoorHint.hidden = !(stream && outdoor && !exposureLocked);
+}
 
 function stopStream(){
   stopLive();
@@ -358,6 +369,7 @@ async function applyExposureLock(wantLocked){
     els.exposureState.hidden = false;
     els.exposureState.innerHTML = '<span class="no">自動曝光</span>';
   }
+  refreshOutdoorHint();
 }
 
 els.startBtn.addEventListener('click', async () => {
@@ -402,6 +414,7 @@ els.startBtn.addEventListener('click', async () => {
 
 els.stopBtn.addEventListener('click', () => { stopStream(); setStatus('已停止', 'idle'); });
 els.lockChk.addEventListener('change', () => applyExposureLock(els.lockChk.checked));
+els.condInput.addEventListener('input', refreshOutdoorHint);
 
 els.sampleBtn.addEventListener('click', async () => {
   const cond = els.condInput.value.trim();
@@ -426,12 +439,14 @@ els.sampleBtn.addEventListener('click', async () => {
   const mean = readings.reduce((a, b) => a + b, 0) / n;
   const min = Math.min(...readings), max = Math.max(...readings);
   const sd = Math.sqrt(readings.reduce((a, b) => a + (b - mean) * (b - mean), 0) / n);
+  const range = +(max - min).toFixed(6);
+  const quality = range > HIGH_VARIANCE_RANGE ? 'high-variance' : 'ok';
 
   session.rows.push({
     condition: cond, n,
     mean: +mean.toFixed(6), min: +min.toFixed(6), max: +max.toFixed(6),
-    stddev: +sd.toFixed(6), range: +(max - min).toFixed(6),
-    exposureLocked, at: new Date().toISOString(),
+    stddev: +sd.toFixed(6), range,
+    quality, exposureLocked, at: new Date().toISOString(),
     samples: readings.map(v => +v.toFixed(6)),
   });
   renderTable();
@@ -445,14 +460,22 @@ function renderTable(){
   els.dataBody.innerHTML = '';
   rows.forEach((r, idx) => {
     const tr = document.createElement('tr');
+    tr.dataset.quality = r.quality || 'ok';
     const cells = [
       ['cond', r.condition], ['', r.n], ['', fmt(r.mean)], ['', fmt(r.min)],
-      ['', fmt(r.max)], ['', fmt(r.stddev)], ['', r.exposureLocked ? '鎖定' : '自動'],
+      ['', fmt(r.max)], ['spread', fmt(r.stddev) + ' / ' + fmt(r.range)], ['', r.exposureLocked ? '鎖定' : '自動'],
     ];
     for (const [cls, val] of cells){
       const td = document.createElement('td');
       if (cls) td.className = cls;
       td.textContent = val;
+      if (cls === 'spread' && r.quality === 'high-variance'){
+        const flag = document.createElement('span');
+        flag.className = 'flag';
+        flag.textContent = '⚠';
+        flag.title = 'range > ' + HIGH_VARIANCE_RANGE + '：單次採集內變化大，可能是混合光照，分析時需檢視或剔除';
+        td.appendChild(flag);
+      }
       tr.appendChild(td);
     }
     const tdDel = document.createElement('td');
@@ -479,15 +502,16 @@ function buildExport(){
       settings: (track && typeof track.getSettings === 'function') ? track.getSettings() : null,
     },
     frameSize: { w: CAP_W, h: CAP_H, lumaCoefficients: 'BT.601 (0.299/0.587/0.114)' },
+    qc: { highVarianceRangeThreshold: HIGH_VARIANCE_RANGE, note: 'quality=high-variance 的列在單次採集內變化大（可能混合光照），分析前需檢視或剔除；每列的 samples 保留逐幀原始值供事後 trim。' },
     conditions: session.rows,
   };
 }
 
 function toCsv(){
-  const head = 'condition,n,mean,min,max,stddev,range,exposure_locked,captured_at';
+  const head = 'condition,n,mean,min,max,stddev,range,quality,exposure_locked,captured_at';
   const lines = session.rows.map(r => [
     '"' + String(r.condition).replace(/"/g, '""') + '"',
-    r.n, r.mean, r.min, r.max, r.stddev, r.range, r.exposureLocked, r.at,
+    r.n, r.mean, r.min, r.max, r.stddev, r.range, r.quality || 'ok', r.exposureLocked, r.at,
   ].join(','));
   return [head, ...lines].join('\n');
 }
