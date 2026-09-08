@@ -127,7 +127,7 @@ internal sealed class TrayContext : ApplicationContext
             cameraDiagnostics.Append("initialize", false, $"{ex.GetType().Name} (0x{ex.HResult:X8})", prepare: sensor?.LastPrepareDiagnostics);
             validationLog.Append(new ValidationLogEntry
             {
-                TimestampUtc = DateTimeOffset.UtcNow,
+                Timestamp = DateTimeOffset.Now,
                 SampleSucceeded = false,
                 ValidatedBy = "Gate A / Test 01-03",
                 Note = $"初始化失敗（對應 Test 10：Camera Sharing 系統設定關閉時可能安靜失敗，或裝置被其他 App 以 ExclusiveControl 佔用）：{ex.GetType().Name} (0x{ex.HResult:X8}): {(string.IsNullOrWhiteSpace(ex.Message) ? "(無訊息文字)" : ex.Message)}"
@@ -159,7 +159,7 @@ internal sealed class TrayContext : ApplicationContext
                     statusMenuItem.Text = $"狀態：相機已離線，等待重新連接（連續 {consecutiveSampleFailures} 輪）";
                     validationLog.Append(new ValidationLogEntry
                     {
-                        TimestampUtc = DateTimeOffset.UtcNow,
+                        Timestamp = DateTimeOffset.Now,
                         SampleSucceeded = false,
                         ValidatedBy = "Gate A / Test 01-03",
                         Note = $"相機不在裝置列舉中（連續 {consecutiveSampleFailures} 輪），略過本輪取樣、未觸碰相機 API。目前列舉到：{string.Join(", ", presence.EnumeratedDevices)}"
@@ -186,7 +186,7 @@ internal sealed class TrayContext : ApplicationContext
                 statusMenuItem.Text = $"狀態：本次取樣失敗（連續 {consecutiveSampleFailures} 輪）";
                 validationLog.Append(new ValidationLogEntry
                 {
-                    TimestampUtc = DateTimeOffset.UtcNow,
+                    Timestamp = DateTimeOffset.Now,
                     SampleSucceeded = false,
                     ValidatedBy = "Gate C / Test 10",
                     Note = result.Error
@@ -226,7 +226,7 @@ internal sealed class TrayContext : ApplicationContext
 
             validationLog.Append(new ValidationLogEntry
             {
-                TimestampUtc = DateTimeOffset.UtcNow,
+                Timestamp = DateTimeOffset.Now,
                 SampleSucceeded = true,
                 MeanLuminance = result.MeanLuminance,
                 BandLabel = rawBand.Label,
@@ -253,7 +253,7 @@ internal sealed class TrayContext : ApplicationContext
             statusMenuItem.Text = "狀態：取樣發生未預期錯誤";
             validationLog.Append(new ValidationLogEntry
             {
-                TimestampUtc = DateTimeOffset.UtcNow,
+                Timestamp = DateTimeOffset.Now,
                 SampleSucceeded = false,
                 ValidatedBy = "未預期例外",
                 Note = $"{ex.GetType().Name} (0x{ex.HResult:X8}): {detail}"
@@ -289,7 +289,7 @@ internal sealed class TrayContext : ApplicationContext
             cameraDiagnostics.Append("reconnect", true, newSensor.ResolvedFormatDescription, prepare: newSensor.LastPrepareDiagnostics);
             validationLog.Append(new ValidationLogEntry
             {
-                TimestampUtc = DateTimeOffset.UtcNow,
+                Timestamp = DateTimeOffset.Now,
                 SampleSucceeded = true,
                 ValidatedBy = "自動重連機制（回應實測發現：SharedReadOnly 長時間運作偶發卡住）",
                 Note = $"連續 {ReconnectAfterConsecutiveFailures} 輪取樣失敗，已自動重建相機工作階段並恢復：{newSensor.ResolvedFormatDescription}"
@@ -301,7 +301,7 @@ internal sealed class TrayContext : ApplicationContext
             cameraDiagnostics.Append("reconnect", false, $"{ex.GetType().Name} (0x{ex.HResult:X8})", prepare: newSensor?.LastPrepareDiagnostics);
             validationLog.Append(new ValidationLogEntry
             {
-                TimestampUtc = DateTimeOffset.UtcNow,
+                Timestamp = DateTimeOffset.Now,
                 SampleSucceeded = false,
                 ValidatedBy = "自動重連機制（回應實測發現：SharedReadOnly 長時間運作偶發卡住）",
                 Note = $"連續 {ReconnectAfterConsecutiveFailures} 輪取樣失敗後嘗試自動重連，但重連本身也失敗，將於下次連續失敗後再試：{ex.GetType().Name} (0x{ex.HResult:X8}): {(string.IsNullOrWhiteSpace(ex.Message) ? "(無訊息文字)" : ex.Message)}"
@@ -333,7 +333,7 @@ internal sealed class TrayContext : ApplicationContext
                 rampFailureNotified = false;
                 validationLog.Append(new ValidationLogEntry
                 {
-                    TimestampUtc = DateTimeOffset.UtcNow,
+                    Timestamp = DateTimeOffset.Now,
                     SampleSucceeded = true,
                     AppliedBrightnessPercent = (int)Math.Round(ramp.TargetPercent),
                     BrightnessApplySucceeded = true,
@@ -354,7 +354,7 @@ internal sealed class TrayContext : ApplicationContext
             trayIcon.ShowBalloonTip(4000, "WCALSS 環境光自動亮度", $"漸進調整寫入失敗：{error}", ToolTipIcon.Warning);
             validationLog.Append(new ValidationLogEntry
             {
-                TimestampUtc = DateTimeOffset.UtcNow,
+                Timestamp = DateTimeOffset.Now,
                 SampleSucceeded = true,
                 AppliedBrightnessPercent = (int)Math.Round(next.Value),
                 BrightnessApplySucceeded = false,

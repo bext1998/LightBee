@@ -10,7 +10,7 @@ namespace Wcalss.AmbientBrightness;
 /// </summary>
 internal sealed class ValidationLogEntry
 {
-    public required DateTimeOffset TimestampUtc { get; init; }
+    public required DateTimeOffset Timestamp { get; init; }
     public required bool SampleSucceeded { get; init; }
     public double? MeanLuminance { get; init; }
     public string? BandLabel { get; init; }
@@ -22,7 +22,7 @@ internal sealed class ValidationLogEntry
 
 internal sealed class ValidationLog
 {
-    private const string Header = "timestamp_utc,sample_succeeded,mean_luminance,band_label,applied_brightness_percent,brightness_apply_succeeded,validated_by,note";
+    private const string Header = "timestamp_local,sample_succeeded,mean_luminance,band_label,applied_brightness_percent,brightness_apply_succeeded,validated_by,note";
     private readonly string path;
     private readonly object gate = new();
     private readonly List<ValidationLogEntry> recent = new();
@@ -58,7 +58,7 @@ internal sealed class ValidationLog
         }
 
         var line = string.Join(",",
-            entry.TimestampUtc.ToString("O", CultureInfo.InvariantCulture),
+            entry.Timestamp.ToString("O", CultureInfo.InvariantCulture),
             entry.SampleSucceeded,
             entry.MeanLuminance?.ToString("F6", CultureInfo.InvariantCulture) ?? "",
             Escape(entry.BandLabel),
