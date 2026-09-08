@@ -19,6 +19,12 @@ internal sealed class TrayContext : ApplicationContext
     // 針對「App 自己的 MediaFrameReader 工作階段卡住、獨立探測工具卻正常」這類情況（spike-report §13.3）。
     private const int ReconnectAfterConsecutiveFailures = 3;
 
+    // 重連退避：連續 M 輪重連仍救不回來時，停掉「每 5 秒取樣 + 每 15 秒重連」的緊迴圈，
+    // 降到長間隔慢慢等——高頻搶相機可能反而擋住廉價相機的韌體自重置（spike-report §13.4、§17.7）。
+    // 螢幕亮度維持在最後一次有效判定，並在工作列提示。恢復取樣後自動回到正常頻率。
+    private const int BackoffAfterReconnectFailures = 3;
+    private const int BackoffIntervalMs = 60000;
+
     private readonly NotifyIcon trayIcon;
     private readonly ToolStripMenuItem autoAdjustMenuItem;
     private readonly ToolStripMenuItem statusMenuItem;
@@ -39,6 +45,9 @@ internal sealed class TrayContext : ApplicationContext
     private bool rampInProgress;
     private bool rampFailureNotified;
     private int consecutiveSampleFailures;
+    private int reconnectFailureStreak;
+    private bool inBackoff;
+    private bool backoffNotified;
 
     public TrayContext()
     {
@@ -161,15 +170,7 @@ internal sealed class TrayContext : ApplicationContext
                         Note = $"相機不在裝置列舉中（連續 {consecutiveSampleFailures} 輪），略過本輪取樣、未觸碰相機 API。目前列舉到：{string.Join(", ", presence.EnumeratedDevices)}"
                     });
                     settingsForm?.OnLogUpdated();
-
-                    if (consecutiveSampleFailures >= ReconnectAfterConsecutiveFailures)
-                    {
-                        consecutiveSampleFailures = 0;
-                        await TryReconnectSensorAsync();
-                    }
-
-                    pacing.OnSample(success: false, raw: 0, smoothed: 0);
-                    sampleTimer.Interval = pacing.NextIntervalMs();
+                    await AfterSampleFailureAsync();
                     return;
                 }
             }
@@ -188,20 +189,18 @@ internal sealed class TrayContext : ApplicationContext
                     Note = result.Error
                 });
                 settingsForm?.OnLogUpdated();
-
-                if (consecutiveSampleFailures >= ReconnectAfterConsecutiveFailures)
-                {
-                    consecutiveSampleFailures = 0;
-                    await TryReconnectSensorAsync();
-                }
-
-                // 取樣失敗一律退回慢間隔：不對疑似故障的相機連續高頻開關（13.4 節教訓）。
-                pacing.OnSample(success: false, raw: 0, smoothed: 0);
-                sampleTimer.Interval = pacing.NextIntervalMs();
+                await AfterSampleFailureAsync();
                 return;
             }
 
             consecutiveSampleFailures = 0;
+            reconnectFailureStreak = 0;
+            if (inBackoff)
+            {
+                inBackoff = false;
+                backoffNotified = false;
+                trayIcon.ShowBalloonTip(4000, "WCALSS 環境光自動亮度", "相機已恢復取樣，回到正常頻率。", ToolTipIcon.Info);
+            }
 
             // EMA 平滑：小幅擾動用 α=0.5，大幅變化用 α=0.9 快速追上（見 SampleSmoother）；
             // CSV 的 mean_luminance 欄位仍記錄原始讀值，跟 Test 06 的量測方式保持一致，方便回溯比對。
@@ -263,6 +262,48 @@ internal sealed class TrayContext : ApplicationContext
     }
 
     /// <summary>
+    /// 取樣失敗（裝置不在列舉，或 SampleOnceAsync 回傳失敗）後的共同處理：視情況重連、
+    /// 連續重連仍失敗就進入退避、更新下一輪間隔。螢幕亮度不動，維持最後一次有效判定。
+    /// </summary>
+    private async Task AfterSampleFailureAsync()
+    {
+        if (inBackoff || consecutiveSampleFailures >= ReconnectAfterConsecutiveFailures)
+        {
+            if (!inBackoff)
+            {
+                consecutiveSampleFailures = 0;
+            }
+
+            await TryReconnectSensorAsync();
+        }
+
+        pacing.OnSample(success: false, raw: 0, smoothed: 0);
+        ApplyNextInterval();
+    }
+
+    /// <summary>下一輪取樣間隔：退避中固定用長間隔，否則交給 SamplePacing。</summary>
+    private void ApplyNextInterval()
+    {
+        sampleTimer.Interval = inBackoff ? BackoffIntervalMs : pacing.NextIntervalMs();
+    }
+
+    private void EnterBackoff()
+    {
+        inBackoff = true;
+        sampleTimer.Interval = BackoffIntervalMs;
+        statusMenuItem.Text = $"狀態：相機長時間無法取樣，已降頻重試（每 {BackoffIntervalMs / 1000} 秒），螢幕維持最後讀數";
+        if (!backoffNotified)
+        {
+            backoffNotified = true;
+            trayIcon.ShowBalloonTip(
+                6000,
+                "WCALSS 環境光自動亮度",
+                $"相機連續 {reconnectFailureStreak} 次重連仍無法取樣，已降到每 {BackoffIntervalMs / 1000} 秒慢速重試；螢幕亮度維持在最後一次有效判定。恢復後會自動回到正常頻率。",
+                ToolTipIcon.Warning);
+        }
+    }
+
+    /// <summary>
     /// 連續 <see cref="ReconnectAfterConsecutiveFailures"/> 輪取樣都拿不到 frame 時呼叫：
     /// 重新建立一個乾淨的 AmbientLightSensor（等於重新協商裝置與格式、開一個新的相機工作階段），
     /// 而不是整個 App 重啟。先 Dispose 舊 sensor 再換上新的；閒置的 AmbientLightSensor 不持有跨次
@@ -272,6 +313,9 @@ internal sealed class TrayContext : ApplicationContext
     /// </summary>
     private async Task TryReconnectSensorAsync()
     {
+        // 每次重連都算一次「嘗試」；只有真正取樣成功（SampleOnceAsync 回 Success）才會把它歸零。
+        // PrepareAsync 成功 ≠ 收得到 frame（issue #15），所以這裡不因 Prepare 成功就清零。
+        reconnectFailureStreak++;
         statusMenuItem.Text = "狀態：連續取樣失敗，正在自動重建相機工作階段…";
         AmbientLightSensor? newSensor = null;
         try
@@ -306,6 +350,11 @@ internal sealed class TrayContext : ApplicationContext
         finally
         {
             settingsForm?.OnLogUpdated();
+        }
+
+        if (!inBackoff && reconnectFailureStreak >= BackoffAfterReconnectFailures)
+        {
+            EnterBackoff();
         }
     }
 
@@ -392,6 +441,10 @@ internal sealed class TrayContext : ApplicationContext
             sampleTimer.Stop();
             sensorReady = false;
             sensor?.Dispose();
+            consecutiveSampleFailures = 0;
+            reconnectFailureStreak = 0;
+            inBackoff = false;
+            backoffNotified = false;
             statusMenuItem.Text = "狀態：重新初始化中…";
             _ = InitializeAsync();
         }
