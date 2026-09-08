@@ -13,6 +13,11 @@ internal static class Program
             return SelfTest.RunAll(Console.Out);
         }
 
+        if (args.Any(arg => string.Equals(arg, "--probe-metadata", StringComparison.OrdinalIgnoreCase)))
+        {
+            return CameraMetadataProbe.RunAsync(Console.Out).GetAwaiter().GetResult();
+        }
+
         ApplicationConfiguration.Initialize();
         Application.Run(new TrayContext());
         return 0;
