@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="dark" data-density="spacious">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>環境光梯度採集</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Mono:wght@400&family=Noto+Sans:wght@400;500;600&display=swap">
+<style>
+/* ── Palladio tokens（取自 palladio/dist/css/palladio.css v0.1.1，只納入用到的） ── */
+:root{
+  --pd-space-1:4px; --pd-space-2:8px; --pd-space-3:12px; --pd-space-4:16px;
+  --pd-space-5:20px; --pd-space-6:24px; --pd-space-8:32px; --pd-space-10:40px; --pd-space-12:48px; --pd-space-16:64px;
+  --pd-radius-sm:4px; --pd-radius-md:8px; --pd-radius-lg:12px; --pd-radius-full:9999px;
+  --pd-duration-fast:120ms; --pd-duration-normal:220ms;
+  --pd-easing-default:cubic-bezier(0.25,0.46,0.45,0.94);
+  --pd-font-sans:"Noto Sans",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --pd-font-mono:"Noto Sans Mono",ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  --pd-density-pad-v:12px; --pd-density-pad-h:20px; --pd-density-min-touch:48px; --pd-density-body-size:15px;
+}
+:root[data-theme="dark"]{
+  --pd-color-bg:#141414;
+  --pd-color-surface:#1C1C1C;
+  --pd-color-surface-raised:#242424;
+  --pd-color-surface-overlay:#2E2E2E;
+  --pd-color-surface-hover:#323232;
+  --pd-color-border-subtle:#242424;
+  --pd-color-border-default:#333333;
+  --pd-color-border-strong:#7A7A7A;
+  --pd-color-input-border:#7A7A7A;
+  --pd-color-text-primary:#F0F0F0;
+  --pd-color-text-secondary:#9A9A9A;
+  --pd-color-text-placeholder:#9A9A9A;
+  --pd-color-text-disabled:#969696;
+  --pd-color-text-inverse:#141414;
+  --pd-color-success:#5CB87A;
+  --pd-color-warning:#E5A93C;
+  --pd-color-danger:#EB7878;
+  --pd-color-info:#64B5F6;
+  /* LightBee accent 插槽（產品責任；amber #EFA94A 對 #141414 文字 ≈ 10:1，過 A-M1） */
+  --pd-color-accent:#EFA94A;
+  --pd-color-accent-hover:#F5BA6A;
+  --pd-color-accent-active:#D9922F;
+  --pd-color-accent-disabled:#6E5A38;
+  --pd-color-accent-subtle:#2A2114;
+  --pd-color-accent-text:#141414;
+}
+*{box-sizing:border-box;}
+html{background:var(--pd-color-bg);}
+body{
+  margin:0;
+  background:var(--pd-color-bg);
+  color:var(--pd-color-text-primary);
+  font-family:var(--pd-font-sans);
+  font-size:var(--pd-density-body-size);
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{
+  max-width:34rem;
+  margin:0 auto;
+  padding:var(--pd-space-6) var(--pd-space-4) calc(var(--pd-space-16, 64px) + env(safe-area-inset-bottom));
+  display:flex; flex-direction:column; gap:var(--pd-space-4);
+}
+header{display:flex; flex-direction:column; gap:var(--pd-space-2);}
+.eyebrow{
+  font-family:var(--pd-font-mono); font-size:12px; line-height:1;
+  letter-spacing:.08em; text-transform:uppercase; color:var(--pd-color-accent);
+}
+h1{font-size:24px; font-weight:600; line-height:1.3; letter-spacing:-0.48px; margin:0;}
+.lede{color:var(--pd-color-text-secondary); font-size:14px; margin:0;}
+
+.panel{
+  background:var(--pd-color-surface-raised);
+  border:1px solid var(--pd-color-border-subtle);
+  border-radius:var(--pd-radius-lg);
+  padding:var(--pd-space-4);
+  display:flex; flex-direction:column; gap:var(--pd-space-3);
+}
+.panel-title{
+  font-family:var(--pd-font-mono); font-size:12px; line-height:1;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--pd-color-text-secondary);
+  margin:0;
+}
+
+.status{display:flex; align-items:center; gap:var(--pd-space-2); font-family:var(--pd-font-mono); font-size:13px;}
+.led{
+  width:10px; height:10px; border-radius:var(--pd-radius-full);
+  background:var(--pd-color-text-disabled); flex:none;
+  transition:background var(--pd-duration-fast) var(--pd-easing-default),
+             box-shadow var(--pd-duration-fast) var(--pd-easing-default);
+}
+.led[data-state="live"]{background:var(--pd-color-success); box-shadow:0 0 0 4px color-mix(in srgb,var(--pd-color-success) 22%,transparent);}
+.led[data-state="busy"]{background:var(--pd-color-warning); box-shadow:0 0 0 4px color-mix(in srgb,var(--pd-color-warning) 22%,transparent);}
+.led[data-state="err"]{background:var(--pd-color-danger); box-shadow:0 0 0 4px color-mix(in srgb,var(--pd-color-danger) 22%,transparent);}
+
+video{
+  width:100%; max-height:200px; object-fit:cover;
+  background:#000; border-radius:var(--pd-radius-md); display:block;
+}
+
+.readout{
+  display:flex; align-items:baseline; gap:var(--pd-space-2);
+  font-family:var(--pd-font-mono);
+}
+.readout .val{font-size:32px; font-weight:600; letter-spacing:-0.64px; font-variant-numeric:tabular-nums;}
+.readout .unit{font-size:13px; color:var(--pd-color-text-secondary);}
+
+button{
+  font-family:var(--pd-font-sans); font-weight:500; font-size:14px; line-height:1;
+  border:1px solid transparent; border-radius:var(--pd-radius-md);
+  padding:var(--pd-density-pad-v) var(--pd-density-pad-h);
+  min-height:var(--pd-density-min-touch);
+  cursor:pointer; width:100%;
+  transition:background var(--pd-duration-fast) var(--pd-easing-default);
+}
+button:focus-visible{outline:2px solid var(--pd-color-border-strong); outline-offset:2px;}
+.btn-primary{background:var(--pd-color-accent); color:var(--pd-color-accent-text);}
+.btn-primary:hover{background:var(--pd-color-accent-hover);}
+.btn-primary:active{background:var(--pd-color-accent-active);}
+.btn-primary:disabled{background:var(--pd-color-accent-disabled); color:var(--pd-color-text-disabled); cursor:default;}
+.btn-ghost{background:var(--pd-color-surface); color:var(--pd-color-text-primary); border-color:var(--pd-color-border-default);}
+.btn-ghost:hover{background:var(--pd-color-surface-hover);}
+.btn-row{display:flex; gap:var(--pd-space-2);}
+
+label.field{display:flex; flex-direction:column; gap:var(--pd-space-2); font-size:13px; color:var(--pd-color-text-secondary);}
+input[type="text"]{
+  font-family:var(--pd-font-sans); font-size:15px;
+  background:var(--pd-color-surface); color:var(--pd-color-text-primary);
+  border:1px solid var(--pd-color-input-border); border-radius:var(--pd-radius-sm);
+  padding:var(--pd-density-pad-v) var(--pd-space-3); min-height:var(--pd-density-min-touch);
+}
+input[type="text"]::placeholder{color:var(--pd-color-text-placeholder,#9A9A9A);}
+input[type="text"]:focus-visible{outline:2px solid var(--pd-color-border-strong); outline-offset:1px;}
+
+.toggle{display:flex; align-items:flex-start; gap:var(--pd-space-3); cursor:pointer;}
+.toggle input{margin-top:3px; width:18px; height:18px; accent-color:var(--pd-color-accent); flex:none;}
+.toggle .t-body{display:flex; flex-direction:column; gap:2px;}
+.toggle .t-label{font-size:14px; color:var(--pd-color-text-primary);}
+.toggle .t-hint{font-size:12px; color:var(--pd-color-text-secondary);}
+
+.exposure-state{font-family:var(--pd-font-mono); font-size:12px;}
+.exposure-state .ok{color:var(--pd-color-success);}
+.exposure-state .no{color:var(--pd-color-text-secondary);}
+
+table{width:100%; border-collapse:collapse; font-size:13px;}
+th,td{text-align:right; padding:var(--pd-space-2) var(--pd-space-2); border-bottom:1px solid var(--pd-color-border-subtle);}
+th:first-child,td:first-child{text-align:left;}
+th{font-family:var(--pd-font-mono); font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--pd-color-text-secondary); font-weight:400;}
+td{font-family:var(--pd-font-mono); font-variant-numeric:tabular-nums;}
+td.cond{font-family:var(--pd-font-sans);}
+tr:last-child td{border-bottom:none;}
+.row-del{
+  background:none; border:none; color:var(--pd-color-text-secondary);
+  font-size:16px; line-height:1; padding:var(--pd-space-1); min-height:0; width:auto; cursor:pointer;
+}
+.row-del:hover{color:var(--pd-color-danger);}
+.empty{color:var(--pd-color-text-secondary); font-size:13px; text-align:center; padding:var(--pd-space-4) 0;}
+
+.callout{
+  border-radius:var(--pd-radius-md); padding:var(--pd-space-3);
+  font-size:13px; line-height:1.55;
+}
+.callout.danger{background:color-mix(in srgb,var(--pd-color-danger) 12%,transparent); color:var(--pd-color-danger);}
+.callout.warn{background:color-mix(in srgb,var(--pd-color-warning) 12%,transparent); color:var(--pd-color-warning);}
+
+pre{
+  font-family:var(--pd-font-mono); font-size:12px; line-height:1.55;
+  background:var(--pd-color-surface); color:var(--pd-color-text-primary);
+  border:1px solid var(--pd-color-border-subtle); border-radius:var(--pd-radius-md);
+  padding:var(--pd-space-3); margin:0; max-height:180px; overflow:auto;
+  white-space:pre-wrap; word-break:break-word;
+}
+.hint{font-size:12px; color:var(--pd-color-text-secondary); line-height:1.55;}
+[hidden]{display:none!important;}
+
+@media (prefers-reduced-motion: reduce){
+  *{transition:none!important; animation:none!important;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="eyebrow">LightBee P0 · Gradient Capture</span>
+    <h1>環境光梯度採集</h1>
+    <p class="lede">用這支手機的相機，量不同光照條件下的畫面平均亮度，累積成一組「明暗梯度」資料。對應 issue #11 的條件因子取樣（C/D 步驟）。</p>
+  </header>
+
+  <!-- 相機 -->
+  <section class="panel">
+    <p class="panel-title">相機</p>
+    <div class="status"><span class="led" id="led" data-state="idle"></span><span id="statusText">尚未開始</span></div>
+    <div class="callout danger" id="errBox" hidden></div>
+    <video id="preview" playsinline muted autoplay hidden></video>
+
+    <div class="readout" id="readout" hidden>
+      <span class="val" id="liveVal">—</span>
+      <span class="unit">目前畫面平均亮度（0–1）</span>
+    </div>
+
+    <label class="toggle" id="lockWrap" hidden>
+      <input type="checkbox" id="lockChk">
+      <span class="t-body">
+        <span class="t-label">鎖定曝光後再採集（建議）</span>
+        <span class="t-hint">關掉自動曝光，讀值才會隨真實光線單調變化、不被 AE 壓平。相機不支援時會自動略過。</span>
+      </span>
+    </label>
+    <p class="exposure-state" id="exposureState" hidden></p>
+
+    <div class="btn-row">
+      <button class="btn-primary" id="startBtn">開始相機</button>
+      <button class="btn-ghost" id="stopBtn" hidden>停止</button>
+    </div>
+  </section>
+
+  <!-- 採集 -->
+  <section class="panel" id="capturePanel" hidden>
+    <p class="panel-title">採集一個條件</p>
+    <label class="field">
+      條件標籤
+      <input type="text" id="condInput" list="condPresets" placeholder="例：關燈關螢幕 / 微光一盞 / 一般開燈" autocomplete="off">
+    </label>
+    <datalist id="condPresets">
+      <option value="關燈・關螢幕"></option>
+      <option value="關燈・相機轉開不對螢幕"></option>
+      <option value="關燈・相機朝螢幕"></option>
+      <option value="微光・開一盞"></option>
+      <option value="一般開燈"></option>
+      <option value="最亮"></option>
+      <option value="白天・窗簾拉開"></option>
+      <option value="白天・窗簾關"></option>
+    </datalist>
+    <p class="hint">按下後保持相機不動約 4 秒，會連續讀約 24 幀。</p>
+    <button class="btn-primary" id="sampleBtn">採集 24 幀</button>
+  </section>
+
+  <!-- 已採集資料 -->
+  <section class="panel" id="dataPanel">
+    <p class="panel-title">已採集的梯度</p>
+    <div id="tableWrap">
+      <p class="empty" id="emptyState">還沒有資料。先開相機、輸入條件標籤、按採集。</p>
+      <table id="dataTable" hidden>
+        <thead>
+          <tr><th>條件</th><th>n</th><th>mean</th><th>min</th><th>max</th><th>σ</th><th>曝光</th><th aria-label="刪除"></th></tr>
+        </thead>
+        <tbody id="dataBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 匯出 -->
+  <section class="panel" id="exportPanel" hidden>
+    <p class="panel-title">匯出（貼回給 Claude）</p>
+    <div class="btn-row">
+      <button class="btn-ghost" id="copyJsonBtn">複製 JSON</button>
+      <button class="btn-ghost" id="copyCsvBtn">複製 CSV</button>
+    </div>
+    <pre id="jsonPreview"></pre>
+    <p class="hint" id="copyHint"></p>
+  </section>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const els = {
+  led:$('led'), statusText:$('statusText'), errBox:$('errBox'), preview:$('preview'),
+  readout:$('readout'), liveVal:$('liveVal'), lockWrap:$('lockWrap'), lockChk:$('lockChk'),
+  exposureState:$('exposureState'), startBtn:$('startBtn'), stopBtn:$('stopBtn'),
+  capturePanel:$('capturePanel'), condInput:$('condInput'), sampleBtn:$('sampleBtn'),
+  emptyState:$('emptyState'), dataTable:$('dataTable'), dataBody:$('dataBody'),
+  exportPanel:$('exportPanel'), copyJsonBtn:$('copyJsonBtn'), copyCsvBtn:$('copyCsvBtn'),
+  jsonPreview:$('jsonPreview'), copyHint:$('copyHint'),
+};
+
+const CAP_W = 160, CAP_H = 120;         // 縮圖尺寸：算平均亮度夠用、快
+const FRAMES = 24, FRAME_GAP_MS = 160;  // 約 4 秒
+const canvas = document.createElement('canvas');
+canvas.width = CAP_W; canvas.height = CAP_H;
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+let stream = null, track = null, capsSnapshot = null;
+let liveTimer = null, exposureLocked = false, session = { rows: [] };
+
+function setStatus(text, state){
+  els.statusText.textContent = text;
+  els.led.dataset.state = state || 'idle';
+}
+function showError(msg){
+  els.errBox.hidden = false;
+  els.errBox.textContent = msg;
+}
+/** BT.601 luma，對齊桌面端 NV12 Y-plane 的算法，回傳 0–1 */
+function frameMeanLuma(){
+  ctx.drawImage(els.preview, 0, 0, CAP_W, CAP_H);
+  const d = ctx.getImageData(0, 0, CAP_W, CAP_H).data;
+  let sum = 0;
+  for (let i = 0; i < d.length; i += 4){
+    sum += 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+  }
+  return sum / (d.length / 4) / 255;
+}
+function fmt(n){ return n.toFixed(4); }
+
+function startLive(){
+  stopLive();
+  liveTimer = setInterval(() => {
+    try { els.liveVal.textContent = fmt(frameMeanLuma()); } catch {}
+  }, 250);
+}
+function stopLive(){ if (liveTimer){ clearInterval(liveTimer); liveTimer = null; } }
+
+function stopStream(){
+  stopLive();
+  if (stream){ stream.getTracks().forEach(t => t.stop()); stream = null; track = null; }
+  els.preview.hidden = true;
+  els.readout.hidden = true;
+  els.lockWrap.hidden = true;
+  els.exposureState.hidden = true;
+  els.stopBtn.hidden = true;
+  els.capturePanel.hidden = true;
+  els.startBtn.hidden = false;
+}
+
+async function applyExposureLock(wantLocked){
+  if (!track || typeof track.applyConstraints !== 'function'){ exposureLocked = false; return; }
+  const caps = (typeof track.getCapabilities === 'function') ? track.getCapabilities() : null;
+  const modes = (caps && caps.exposureMode) || [];
+  if (wantLocked){
+    if (!modes.includes('manual')){
+      exposureLocked = false;
+      els.exposureState.hidden = false;
+      els.exposureState.innerHTML = '<span class="no">此相機不支援鎖定曝光（exposureMode 無 manual），維持自動曝光採集。</span>';
+      els.lockChk.checked = false;
+      return;
+    }
+    try {
+      await track.applyConstraints({ advanced: [{ exposureMode: 'manual' }] });
+      exposureLocked = true;
+      els.exposureState.hidden = false;
+      els.exposureState.innerHTML = '<span class="ok">✓ 已鎖定曝光</span>';
+    } catch (e){
+      exposureLocked = false;
+      els.lockChk.checked = false;
+      els.exposureState.hidden = false;
+      els.exposureState.innerHTML = '<span class="no">鎖定曝光失敗：' + (e.name || e) + '，維持自動曝光。</span>';
+    }
+  } else {
+    try { await track.applyConstraints({ advanced: [{ exposureMode: 'continuous' }] }); } catch {}
+    exposureLocked = false;
+    els.exposureState.hidden = false;
+    els.exposureState.innerHTML = '<span class="no">自動曝光</span>';
+  }
+}
+
+els.startBtn.addEventListener('click', async () => {
+  els.errBox.hidden = true;
+  els.startBtn.disabled = true;
+  setStatus('要求相機權限…', 'busy');
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    setStatus('瀏覽器不支援', 'err');
+    showError('這個瀏覽器沒有 getUserMedia。換 Chrome 或系統內建瀏覽器再試。');
+    els.startBtn.disabled = false;
+    return;
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false,
+    });
+  } catch (e){
+    setStatus('取得相機失敗', 'err');
+    showError('取得相機失敗：' + (e.name || e) + (e.message ? '（' + e.message + '）' : '') + '。確認已允許相機權限、沒被其他 App 佔用，再按一次。');
+    els.startBtn.disabled = false;
+    return;
+  }
+
+  track = stream.getVideoTracks()[0];
+  capsSnapshot = (track && typeof track.getCapabilities === 'function') ? track.getCapabilities() : null;
+  els.preview.srcObject = stream;
+  await els.preview.play().catch(() => {});
+
+  els.startBtn.disabled = false;
+  els.startBtn.hidden = true;
+  els.stopBtn.hidden = false;
+  els.preview.hidden = false;
+  els.readout.hidden = false;
+  els.lockWrap.hidden = false;
+  els.capturePanel.hidden = false;
+  setStatus('相機串流中', 'live');
+  startLive();
+  await applyExposureLock(els.lockChk.checked);
+});
+
+els.stopBtn.addEventListener('click', () => { stopStream(); setStatus('已停止', 'idle'); });
+els.lockChk.addEventListener('change', () => applyExposureLock(els.lockChk.checked));
+
+els.sampleBtn.addEventListener('click', async () => {
+  const cond = els.condInput.value.trim();
+  if (!cond){ els.condInput.focus(); return; }
+  if (!stream){ return; }
+
+  els.sampleBtn.disabled = true;
+  els.condInput.disabled = true;
+  els.led.dataset.state = 'busy';
+  const readings = [];
+  for (let i = 0; i < FRAMES; i++){
+    setStatus('採集中 ' + (i + 1) + '/' + FRAMES + '（' + cond + '）', 'busy');
+    try { readings.push(frameMeanLuma()); } catch {}
+    await new Promise(r => setTimeout(r, FRAME_GAP_MS));
+  }
+  els.sampleBtn.disabled = false;
+  els.condInput.disabled = false;
+  setStatus('相機串流中', 'live');
+
+  if (!readings.length){ showError('採集失敗，一幀都沒讀到。'); return; }
+  const n = readings.length;
+  const mean = readings.reduce((a, b) => a + b, 0) / n;
+  const min = Math.min(...readings), max = Math.max(...readings);
+  const sd = Math.sqrt(readings.reduce((a, b) => a + (b - mean) * (b - mean), 0) / n);
+
+  session.rows.push({
+    condition: cond, n,
+    mean: +mean.toFixed(6), min: +min.toFixed(6), max: +max.toFixed(6),
+    stddev: +sd.toFixed(6), range: +(max - min).toFixed(6),
+    exposureLocked, at: new Date().toISOString(),
+    samples: readings.map(v => +v.toFixed(6)),
+  });
+  renderTable();
+});
+
+function renderTable(){
+  const rows = session.rows;
+  els.emptyState.hidden = rows.length > 0;
+  els.dataTable.hidden = rows.length === 0;
+  els.exportPanel.hidden = rows.length === 0;
+  els.dataBody.innerHTML = '';
+  rows.forEach((r, idx) => {
+    const tr = document.createElement('tr');
+    const cells = [
+      ['cond', r.condition], ['', r.n], ['', fmt(r.mean)], ['', fmt(r.min)],
+      ['', fmt(r.max)], ['', fmt(r.stddev)], ['', r.exposureLocked ? '鎖定' : '自動'],
+    ];
+    for (const [cls, val] of cells){
+      const td = document.createElement('td');
+      if (cls) td.className = cls;
+      td.textContent = val;
+      tr.appendChild(td);
+    }
+    const tdDel = document.createElement('td');
+    const del = document.createElement('button');
+    del.className = 'row-del'; del.type = 'button';
+    del.setAttribute('aria-label', '刪除 ' + r.condition);
+    del.textContent = '×';
+    del.addEventListener('click', () => { session.rows.splice(idx, 1); renderTable(); });
+    tdDel.appendChild(del);
+    tr.appendChild(tdDel);
+    els.dataBody.appendChild(tr);
+  });
+  els.jsonPreview.textContent = JSON.stringify(buildExport(), null, 2);
+}
+
+function buildExport(){
+  return {
+    tool: 'lightbee-gradient-capture',
+    capturedAt: new Date().toISOString(),
+    userAgent: navigator.userAgent,
+    camera: {
+      label: (track && track.label) || null,
+      capabilities: capsSnapshot,
+      settings: (track && typeof track.getSettings === 'function') ? track.getSettings() : null,
+    },
+    frameSize: { w: CAP_W, h: CAP_H, lumaCoefficients: 'BT.601 (0.299/0.587/0.114)' },
+    conditions: session.rows,
+  };
+}
+
+function toCsv(){
+  const head = 'condition,n,mean,min,max,stddev,range,exposure_locked,captured_at';
+  const lines = session.rows.map(r => [
+    '"' + String(r.condition).replace(/"/g, '""') + '"',
+    r.n, r.mean, r.min, r.max, r.stddev, r.range, r.exposureLocked, r.at,
+  ].join(','));
+  return [head, ...lines].join('\n');
+}
+
+async function copyText(text, okMsg){
+  try { await navigator.clipboard.writeText(text); els.copyHint.textContent = okMsg; }
+  catch { els.copyHint.textContent = '複製失敗，長按上面文字手動選取。'; }
+}
+els.copyJsonBtn.addEventListener('click', () => copyText(JSON.stringify(buildExport(), null, 2), 'JSON 已複製。'));
+els.copyCsvBtn.addEventListener('click', () => copyText(toCsv(), 'CSV 已複製。'));
+
+window.addEventListener('pagehide', stopStream);
+renderTable();
+</script>
+</body>
+</html>
