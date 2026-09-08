@@ -570,3 +570,39 @@ dotnet run -- --selftest
 2. 正常啟動跑幾輪，看 `camera-diagnostics.csv` 的 `device_match_note`（確認是用哪一層比對到的）、`resolved_format`、`frames_arrived`、`failed_step`。
 3. 若 `failed_step=no-frames` 且 `detail` 是「frame 解析失敗…」→ 就是 MF 對這顆相機的原生格式不支援轉 NV12，需要在 §17 回填並改走「泛用 luminance 讀取（多 `BitmapPixelFormat`）」。
 4. 分級是否明顯偏掉（例如開燈卻判「暗」）→ 第 3 層校正要提前排。
+
+### 17.6 真機資料點 #1：切換 Camera Sharing 時的自動重連（2026-09-08，`camera-diagnostics.csv`）
+
+新相機為 **Logitech C270 HD WEBCAM**（換掉 §2 那顆 rebadge 的 `USB Camera`）。使用者在 App 運作中打開 Windows「相機共用」系統設定，觀察到短暫訊號中斷、約十幾秒後自行恢復。`camera-diagnostics.csv` 23:17–23:19 的紀錄：
+
+| 時間 | 事件 |
+|---|---|
+| 23:17:48–23:18:28 | 健康取樣，`frames_arrived≈12`、`failed_step=none` |
+| ~23:18:13 起 | `frames_arrived` 掉到 6–8、`initialize_ms` 升高、`media_capture_dispose_ms` 跳到 ~500ms——frame server 正在因應共用設定切換重新協商 |
+| 23:18:33 | 第 1 次失敗：`failed_step=no-frames`（即使用者看到的「中斷」） |
+| 23:18:37 / 23:18:42 | 第 2、3 次失敗：`COMException 0xC00D36B4`（`MF_E_..._DEVICE_INVALIDATED`，舊 capture session 被共用模式切換作廢） |
+| 23:18:42.8 | 連續 3 次 → `TryReconnectSensorAsync` → **重連成功** |
+| 23:18:48 起 | `failed_step=none`、`frames_arrived=12` 穩定 |
+
+總中斷約 **15 秒**（3 個失敗取樣週期 + 一次重連）。恢復是 App 自己的 §16.6 自動重連機制達成的，不需關 App。
+
+**§17 修正在此路徑上驗證通過**。重連那一列（`phase=reconnect`）的新欄位：
+
+```text
+enumerated_devices = C270 HD WEBCAM
+target_device_found = True
+device_match_note  = 設定「USB Camera」對不上，但只列舉到一台，改用「C270 HD WEBCAM」
+resolved_format    = 1280x720 @ 30/1 FPS / NV12
+```
+
+`config.json` 仍是舊的 `USB Camera`，新相機列舉為 `C270 HD WEBCAM`，完全比對失敗 → 走 `CameraCompatibility.ResolveDevice` 的 `SoleDevice`（只有一台就採用）退路。**修正前這裡會丟 `找不到視訊裝置：USB Camera`，`TryReconnectSensorAsync` 失敗，App 卡死**。
+
+**已驗證**：Layer 1 `SoleDevice` 退路 + Layer 2 格式挑選（NV12 可用）在**運作中重連**路徑上成立；`device_match_note` 欄位如實記錄。
+
+**尚未驗證**：
+
+- 冷啟動 / `--probe-metadata`（§17.5 第 1 點）——`InitializeAsync` 走同一套 `ResolveDevice`，理論上一樣，但沒實測。
+- 目前是靠「只有一台相機」的退路，不是穩定路徑。接第二台相機時 `SoleDevice` 不觸發就會失敗。**動作項**：把設定的裝置名稱改成 `C270 HD WEBCAM`（Settings 下拉可選），走「完全同名」。
+- 這次 `resolved_format` 選了 720p 而非 640×480——切換共用模式的瞬間 `SupportedFormats` 被縮到剩一種（§5.2 記過同樣現象）。穩定後重開 App 應回到 VGA，未確認。
+- 第 3 層：C270 是全新 sensor、解析度也不同，亮度分級門檻幾乎確定已偏（見 issue #13），本資料點未評估分級準度。
+- 這次的失敗是 `0xC00D36B4`（session 作廢），不是 §17.4 講的 `0x80070020`（sharing violation）；既有的「連續 3 次 → 重連」已足以處理，SharingMode 自動退回維持不做。
