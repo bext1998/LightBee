@@ -95,9 +95,10 @@ h1{font-size:24px; font-weight:600; line-height:1.3; letter-spacing:-0.48px; mar
 .led[data-state="busy"]{background:var(--pd-color-warning); box-shadow:0 0 0 4px color-mix(in srgb,var(--pd-color-warning) 22%,transparent);}
 .led[data-state="err"]{background:var(--pd-color-danger); box-shadow:0 0 0 4px color-mix(in srgb,var(--pd-color-danger) 22%,transparent);}
 
-video{
-  width:100%; max-height:200px; object-fit:cover;
-  background:#000; border-radius:var(--pd-radius-md); display:block;
+/* 相機串流用，不顯示預覽畫面（隱私）——放在畫面外但仍讓瀏覽器持續解碼 */
+.offscreen{
+  position:fixed; left:0; top:0; width:1px; height:1px;
+  opacity:0; pointer-events:none;
 }
 
 .readout{
@@ -188,6 +189,7 @@ pre{
     <span class="eyebrow">LightBee P0 · Gradient Capture</span>
     <h1>環境光梯度採集</h1>
     <p class="lede">用這支手機的相機，量不同光照條件下的畫面平均亮度，累積成一組「明暗梯度」資料。對應 issue #11 的條件因子取樣（C/D 步驟）。</p>
+    <p class="lede"><strong>不錄影、不存圖、不上傳任何影像</strong>——只在本機讀每一幀的平均亮度數字。沒有預覽畫面，燈號亮綠色代表相機正在串流。</p>
   </header>
 
   <!-- 相機 -->
@@ -195,7 +197,7 @@ pre{
     <p class="panel-title">相機</p>
     <div class="status"><span class="led" id="led" data-state="idle"></span><span id="statusText">尚未開始</span></div>
     <div class="callout danger" id="errBox" hidden></div>
-    <video id="preview" playsinline muted autoplay hidden></video>
+    <video id="preview" playsinline muted autoplay class="offscreen"></video>
 
     <div class="readout" id="readout" hidden>
       <span class="val" id="liveVal">—</span>
@@ -331,7 +333,7 @@ function refreshOutdoorHint(){
 function stopStream(){
   stopLive();
   if (stream){ stream.getTracks().forEach(t => t.stop()); stream = null; track = null; }
-  els.preview.hidden = true;
+  els.preview.srcObject = null;
   els.readout.hidden = true;
   els.lockWrap.hidden = true;
   els.exposureState.hidden = true;
@@ -403,11 +405,10 @@ els.startBtn.addEventListener('click', async () => {
   els.startBtn.disabled = false;
   els.startBtn.hidden = true;
   els.stopBtn.hidden = false;
-  els.preview.hidden = false;
   els.readout.hidden = false;
   els.lockWrap.hidden = false;
   els.capturePanel.hidden = false;
-  setStatus('相機串流中', 'live');
+  setStatus('相機串流中 · 僅讀取亮度、不錄影', 'live');
   startLive();
   await applyExposureLock(els.lockChk.checked);
 });
@@ -432,7 +433,7 @@ els.sampleBtn.addEventListener('click', async () => {
   }
   els.sampleBtn.disabled = false;
   els.condInput.disabled = false;
-  setStatus('相機串流中', 'live');
+  setStatus('相機串流中 · 僅讀取亮度、不錄影', 'live');
 
   if (!readings.length){ showError('採集失敗，一幀都沒讀到。'); return; }
   const n = readings.length;
