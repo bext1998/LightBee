@@ -78,6 +78,25 @@ internal sealed class AmbientLightSensor : IDisposable
     public PrepareDiagnostics? LastPrepareDiagnostics { get; private set; }
 
     /// <summary>
+    /// 目標裝置的 <c>VID_xxxx&amp;PID_xxxx</c>（從 WinRT 裝置 Id 抽出；抽不到回傳完整 Id，都沒有回空字串）。
+    /// 用於硬體相容性排查——把「哪顆晶片」記進 log，別只有「雜牌相機」。PrepareAsync 成功後才有值。
+    /// </summary>
+    public string ResolvedDeviceHardwareId
+    {
+        get
+        {
+            var id = device?.Id;
+            if (string.IsNullOrEmpty(id))
+            {
+                return "";
+            }
+
+            var match = System.Text.RegularExpressions.Regex.Match(id, "VID_[0-9A-Fa-f]{4}&PID_[0-9A-Fa-f]{4}");
+            return match.Success ? match.Value.ToUpperInvariant() : id;
+        }
+    }
+
+    /// <summary>
     /// 只做裝置列舉、不碰 <see cref="MediaCapture"/>，回報目標裝置是否還在（<c>TargetDeviceFound</c>）。
     /// 用於 §16.6：便宜相機可能整個從 USB bus 掉，此時不該再對 Media Foundation 硬送
     /// <c>InitializeAsync</c>（每 5 秒秒炸 + 對 MF 高頻 thrash，§13.4 警告過的風險）。

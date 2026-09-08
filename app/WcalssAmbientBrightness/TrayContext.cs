@@ -111,6 +111,8 @@ internal sealed class TrayContext : ApplicationContext
             await sensor.PrepareAsync();
             sensorReady = true;
             statusMenuItem.Text = $"狀態：就緒（{sensor.ResolvedFormatDescription}）";
+            // 硬體相容性排查：把相機的 VID/PID 記進 log（見 HARDWARE.md 的已知有問題清單）。
+            cameraDiagnostics.Append("device-info", true, $"hwid={sensor.ResolvedDeviceHardwareId}; format={sensor.ResolvedFormatDescription}", prepare: sensor.LastPrepareDiagnostics);
             cameraDiagnostics.Append("initialize", true, sensor.ResolvedFormatDescription, prepare: sensor.LastPrepareDiagnostics);
 
             // 用螢幕實際回報的目前亮度當漸進控制器的起點，避免第一次判定分級時從一個猜測值開始漸進，
@@ -298,7 +300,7 @@ internal sealed class TrayContext : ApplicationContext
             trayIcon.ShowBalloonTip(
                 6000,
                 "WCALSS 環境光自動亮度",
-                $"相機連續 {reconnectFailureStreak} 次重連仍無法取樣，已降到每 {BackoffIntervalMs / 1000} 秒慢速重試；螢幕亮度維持在最後一次有效判定。恢復後會自動回到正常頻率。",
+                $"相機連續 {reconnectFailureStreak} 次重連仍無法取樣，疑似相機韌體問題（見 HARDWARE.md）。已降到每 {BackoffIntervalMs / 1000} 秒慢速重試；螢幕亮度維持在最後一次有效判定，恢復後自動回正常頻率。",
                 ToolTipIcon.Warning);
         }
     }

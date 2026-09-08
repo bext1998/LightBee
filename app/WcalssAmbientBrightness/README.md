@@ -47,6 +47,12 @@ dotnet run -- --selftest
 - **即時狀態**分頁：目前讀數、目前分級、目前使用的亮度控制方式（WMI／ACPI 或 DDC/CI）。
 - **驗證紀錄**分頁：逐筆取樣歷史，可直接對照 Spike 報告核對結論是否成立。
 
+## 硬體相容性
+
+相機並非都能用——韌體不穩定的廉價相機（實測 Sonix `VID_5258` 通用晶片會安靜掉 frame）
+在這個 App 的頻繁 Open/Release 取樣下容易出問題，程式內重連救不回來。已驗證可用清單、
+換相機的 2 分鐘自我檢查、回報規則見 **[HARDWARE.md](HARDWARE.md)**。
+
 ## 已知限制（誠實對照 Spike 報告，不是這個 App 沒做完）
 
 - **只有三段亮度分級**：這是 Gate B「PARTIAL」判定的直接後果，不是實作偷懶。要做更細的漸進分級，需要先用可控漸進光源（如可調光檯燈＋Lux 計）重新驗證 Test 06，這超出本輪範圍。
@@ -57,4 +63,4 @@ dotnet run -- --selftest
 
 ## 與 spike/camera-probe 的關係
 
-`AmbientLightSensor.cs` 裡的裝置列舉、格式選擇（含 640x480/NV12 → fallback 最高解析度 NV12）、NV12 Y-plane 平均亮度計算，都是直接從 `spike/camera-probe/ColdStartCommand.cs` 移植過來的同一套邏輯，只是把「重複 N 輪後結束」的一次性測試迴圈，改成用 `System.Windows.Forms.Timer` 驅動的無限背景迴圈。這樣才能確保「這個 App 觀察到的行為」跟「Spike 報告記錄的行為」是同一套實測依據，不是另外重新猜一套。
+`AmbientLightSensor.cs` 的取樣迴圈與 NV12 Y-plane 平均亮度計算，是從 `spike/camera-probe/ColdStartCommand.cs` 移植過來的同一套邏輯，只是把「重複 N 輪後結束」的一次性測試迴圈，改成用 `System.Windows.Forms.Timer` 驅動的無限背景迴圈。裝置比對與格式挑選後來為了換相機相容性重寫（不再假設特定型號／NV12，見 spike-report §17，抽到 `CameraCompatibility.cs`）。`spike/camera-probe/` 本身已凍結、不再維護，其 `raw-data/` 保留為 spike-report 的原始證據。
