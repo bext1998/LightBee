@@ -159,6 +159,7 @@ tr[data-quality="high-variance"]{background:color-mix(in srgb,var(--pd-color-war
   font-size:16px; line-height:1; padding:var(--pd-space-1); min-height:0; width:auto; cursor:pointer;
 }
 .row-del:hover{color:var(--pd-color-danger);}
+#clearBtn.armed{border-color:var(--pd-color-danger); color:var(--pd-color-danger);}
 .empty{color:var(--pd-color-text-secondary); font-size:13px; text-align:center; padding:var(--pd-space-4) 0;}
 
 .callout{
@@ -258,6 +259,8 @@ pre{
         <tbody id="dataBody"></tbody>
       </table>
     </div>
+    <p class="hint" id="storeState" hidden></p>
+    <button class="btn-ghost" id="clearBtn" hidden>清空全部</button>
   </section>
 
   <!-- 匯出 -->
@@ -282,9 +285,23 @@ const els = {
   capturePanel:$('capturePanel'), condInput:$('condInput'), sampleBtn:$('sampleBtn'),
   outdoorHint:$('outdoorHint'),
   emptyState:$('emptyState'), dataTable:$('dataTable'), dataBody:$('dataBody'),
+  storeState:$('storeState'), clearBtn:$('clearBtn'),
   exportPanel:$('exportPanel'), copyJsonBtn:$('copyJsonBtn'), copyCsvBtn:$('copyCsvBtn'),
   jsonPreview:$('jsonPreview'), copyHint:$('copyHint'),
 };
+
+// 採集的列存在「這支手機」的 localStorage：重載/關分頁都不會丟，不上傳、不碰伺服器。
+const STORE_KEY = 'lightbee-gradient-capture-v1';
+function saveSession(){
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(session.rows)); } catch {}
+}
+function loadSession(){
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (Array.isArray(parsed)) session.rows = parsed;
+  } catch {}
+}
 
 const CAP_W = 160, CAP_H = 120;         // 縮圖尺寸：算平均亮度夠用、快
 const FRAMES = 24, FRAME_GAP_MS = 160;  // 約 4 秒
@@ -458,6 +475,9 @@ function renderTable(){
   els.emptyState.hidden = rows.length > 0;
   els.dataTable.hidden = rows.length === 0;
   els.exportPanel.hidden = rows.length === 0;
+  els.storeState.hidden = rows.length === 0;
+  els.clearBtn.hidden = rows.length === 0;
+  els.storeState.textContent = '本機已存 ' + rows.length + ' 筆（重載／關分頁都不會消失，不上傳）';
   els.dataBody.innerHTML = '';
   rows.forEach((r, idx) => {
     const tr = document.createElement('tr');
@@ -490,6 +510,7 @@ function renderTable(){
     els.dataBody.appendChild(tr);
   });
   els.jsonPreview.textContent = JSON.stringify(buildExport(), null, 2);
+  saveSession();
 }
 
 function buildExport(){
@@ -524,7 +545,31 @@ async function copyText(text, okMsg){
 els.copyJsonBtn.addEventListener('click', () => copyText(JSON.stringify(buildExport(), null, 2), 'JSON 已複製。'));
 els.copyCsvBtn.addEventListener('click', () => copyText(toCsv(), 'CSV 已複製。'));
 
+// 「清空全部」：兩段式，第一次按進入待確認 3 秒，再按才真的清。
+let clearArmed = false, clearArmTimer = null;
+function disarmClear(){
+  clearArmed = false;
+  els.clearBtn.textContent = '清空全部';
+  els.clearBtn.classList.remove('armed');
+  if (clearArmTimer){ clearTimeout(clearArmTimer); clearArmTimer = null; }
+}
+els.clearBtn.addEventListener('click', () => {
+  if (!clearArmed){
+    clearArmed = true;
+    els.clearBtn.textContent = '再按一次確定清空';
+    els.clearBtn.classList.add('armed');
+    clearArmTimer = setTimeout(disarmClear, 3000);
+    return;
+  }
+  disarmClear();
+  session.rows = [];
+  try { localStorage.removeItem(STORE_KEY); } catch {}
+  els.copyHint.textContent = '';
+  renderTable();
+});
+
 window.addEventListener('pagehide', stopStream);
+loadSession();
 renderTable();
 </script>
 </body>
