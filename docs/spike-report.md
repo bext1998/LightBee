@@ -644,3 +644,11 @@ resolved_format    = 1280x720 @ 30/1 FPS / NV12
 這強化了 issue #13 的必要性，也是 §4「Persistent 常駐串流 vs Lazy」那個未拍板選項的一個新考量點：Persistent 下指示燈恆亮（不閃），但那顆綠光會**持續**進入畫面而非間歇；Lazy 下是間歇污染但曝光每次重新收斂。兩者對暗處判定的影響方向不同，要一起測。
 
 **初步排查（2026-09-09，使用者手指暫時遮住指示燈）**：讀值浮動不大。屬於快速指示性測試（手指非全遮光、僅短暫、單一光照條件），不算定論，但足以**把指示燈降為次要嫌疑**。主嫌回到螢幕背光散射（§14）。校正時仍建議做一次「暗處 + 膠帶全遮燈」對照確認，但優先處理螢幕散射：關燈量測時把相機轉開不對螢幕，或關螢幕取基準。
+
+**感光能力探測（2026-09-09，新增 `--sensitivity-probe`／`--probe-metadata` 加曝光鎖測試）**：
+
+- C270 = Logitech `VID_046D&PID_0825`；穩定後格式仍是 1280×720 NV12（§17.6 猜「重開回 VGA」未成真）。
+- **曝光控制**：現代 `ExposureControl`（ms 單位）**不支援**；legacy `Exposure`（driver-defined 單位）**支援**，且 `TrySetAuto(false)` 成功——**C270 可以鎖手動曝光**。`IsoSpeedControl` 不支援。
+- 這決定 issue #13 §3 的校正路線：走「**能鎖曝光**」那條——鎖住曝光做比現在三段更細的梯度。手動曝光要用 `controller.Exposure.TrySetValue()`，不是 `ExposureControl.Value`。
+- 開燈環境 smoke test（5 樣本，與 App 併行）：mean≈0.463、stddev≈0.0002、range≈0.0007，非常穩，對應舊「有開燈」門檻 0.45。
+- 待辦：關 App 後用 `--sensitivity-probe 12` 在 5 種光照條件各跑一次，據此重訂 `BrightnessMapper.DefaultBands` 三段門檻。
