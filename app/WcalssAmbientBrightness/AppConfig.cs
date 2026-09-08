@@ -7,8 +7,15 @@ namespace Wcalss.AmbientBrightness;
 internal sealed class AppConfig
 {
     public bool AutoAdjustEnabled { get; set; } = true;
-    public string DeviceName { get; set; } = "USB Camera";
-    public string SharingMode { get; set; } = "shared"; // Test 10 發現 SharedReadOnly 起始讀數比 ExclusiveControl 穩定
+
+    /// <summary>
+    /// 目標相機的列舉名稱。留空＝自動採用唯一列舉到的視訊裝置（見 <see cref="CameraCompatibility.ResolveDevice"/>）。
+    /// 多台相機時要在設定裡指定，否則初始化會列出所有裝置並失敗。
+    /// </summary>
+    public string DeviceName { get; set; } = "";
+
+    /// <summary>shared（SharedReadOnly）／exclusive（ExclusiveControl）。與其他相機 App 共存時用 shared。</summary>
+    public string SharingMode { get; set; } = "shared";
     public int SampleIntervalMs { get; set; } = 5000;
 
     // 自適應取樣節奏（回應「環境亮度感知太慢」的需求，軟體層方案）：

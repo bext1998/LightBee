@@ -15,4 +15,10 @@ TestResults/
 
 # Local application data and validation records
 validation-log.csv
+camera-diagnostics.csv
 config.json
+
+# Local dev scratch / machine certs (never commit)
+.tmp-probe-server/
+*.crt
+*.key
