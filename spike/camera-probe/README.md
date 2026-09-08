@@ -1,5 +1,9 @@
 # WCALSS Camera Probe
 
+> **已凍結（2026-09-08）**：這是 spike 階段的一次性探測工具，不再維護。`raw-data/` 保留為
+> `docs/spike-report.md` 的原始證據；產品程式在 `app/WcalssAmbientBrightness/`。相機相關的
+> 後續開發（換相機相容性、per-camera 校正等）走該目錄與 GitHub issues，不在此工具內進行。
+
 這個 Windows Console App 實作 Spike 規格書第 6～9 節：
 
 - Test 01：以 `Windows.Devices.Enumeration.DeviceInformation` 列舉 `DeviceClass.VideoCapture`。
