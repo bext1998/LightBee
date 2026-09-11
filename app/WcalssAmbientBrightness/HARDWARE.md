@@ -9,7 +9,7 @@ MediaCapture）救不回來。在取樣設計改為常駐串流之前，請用�
 
 | 相機 | 列舉名稱 | 備註 |
 |---|---|---|
-| Logitech C270 HD WEBCAM | `C270 HD WEBCAM` | 驗證中（2026-09-08 換上，待一整晚 `camera-diagnostics.csv` 無整片 `no-frames` 才轉正式） |
+| Logitech C270 HD WEBCAM | `C270 HD WEBCAM` | 已驗證可用（2026-09-08 換上，2026-09-10~11 連續運行 18h55m，`camera-diagnostics.csv` 0 reconnect / 0 sample 失敗 / 無 `no-frames`） |
 
 ## 已知有問題
 
