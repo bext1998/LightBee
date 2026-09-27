@@ -419,14 +419,31 @@ els.startBtn.addEventListener('click', async () => {
     els.startBtn.disabled = false;
     return;
   }
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } },
-      audio: false,
-    });
-  } catch (e){
+  // 相機被其他程式短暫佔用時（例如電腦上的 LightBee 每 5 秒開關一次相機），瀏覽器會回
+  // AbortError（Timeout starting video source）或 NotReadableError；錯開時間重試通常就能拿到。
+  const BUSY_ERRORS = ['AbortError', 'NotReadableError', 'TrackStartError'];
+  const MAX_ATTEMPTS = 4;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS && !stream; attempt++){
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false,
+      });
+    } catch (e){
+      lastErr = e;
+      if (!BUSY_ERRORS.includes(e && e.name) || attempt === MAX_ATTEMPTS) break;
+      setStatus(`相機忙碌中，重試 ${attempt}/${MAX_ATTEMPTS - 1}…`, 'busy');
+      await new Promise((r) => setTimeout(r, 1200 + attempt * 700));
+    }
+  }
+  if (!stream){
+    const e = lastErr || {};
+    const busy = BUSY_ERRORS.includes(e.name);
     setStatus('取得相機失敗', 'err');
-    showError('取得相機失敗：' + (e.name || e) + (e.message ? '（' + e.message + '）' : '') + '。確認已允許相機權限、沒被其他 App 佔用，再按一次。');
+    showError('取得相機失敗：' + (e.name || e) + (e.message ? '（' + e.message + '）' : '') + '。'
+      + (busy ? '相機可能正被其他程式使用（在電腦上測試時，LightBee 會定期開關同一台相機），關掉其他使用相機的程式後再按一次。'
+              : '確認已允許相機權限、沒被其他 App 佔用，再按一次。'));
     els.startBtn.disabled = false;
     return;
   }
